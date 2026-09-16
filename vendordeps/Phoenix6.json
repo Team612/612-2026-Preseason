@@ -1,0 +1,15 @@
+{
+  "fileName": "Phoenix6.json",
+  "name": "CTRE-Phoenix (v6)",
+  "version": "25.4.0",
+  "frcYear": "2025",
+  "uuid": "e995de00-2c64-4df5-8831-c1441420ff19",
+  "mavenUrls": ["https://maven.ctr-electronics.com/release/"],
+  "jsonUrl": "https://maven.ctr-electronics.com/release/com/ctre/phoenix6/latest/Phoenix6-frc2025-latest.json",
+  "javaDependencies": [{"groupId": "com.ctre.phoenix6", "artifactId": "wpiapi-java", "version": "25.4.0"}],
+  "jniDependencies": [
+    {"groupId": "com.ctre.phoenix6", "artifactId": "api-cpp", "version": "25.4.0", "isJar": false, "skipInvalidPlatforms": true, "validPlatforms": ["windowsx86-64", "linuxx86-64", "linuxarm64", "linuxathena"], "simMode": "hwsim"},
+    {"groupId": "com.ctre.phoenix6", "artifactId": "tools", "version": "25.4.0", "isJar": false, "skipInvalidPlatforms": true, "validPlatforms": ["windowsx86-64", "linuxx86-64", "linuxarm64", "linuxathena"], "simMode": "hwsim"}
+  ],
+  "cppDependencies": []
+}

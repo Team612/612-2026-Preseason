@@ -1,12 +1,10 @@
-import static org.junit.Assert.*;
-import org.junit.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class TestTemplate{
-    @Test
-    public void shouldDoMath(){
-        int a = 1;
-        int b = 1;
-        int c = a+b;
-        assertEquals(2, c);
-    }
+import org.junit.jupiter.api.Test;
+
+class TestTemplate {
+  @Test
+  void shouldDoMath() {
+    assertEquals(2, 1 + 1);
+  }
 }
