@@ -1,6 +1,5 @@
 package frc.robot.subsystems;
 
-import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -35,10 +34,8 @@ public class Swerve extends SubsystemBase {
     new SwerveModule("RearLeft", Constants.SwerveConstants.kRearLeft),
     new SwerveModule("RearRight", Constants.SwerveConstants.kRearRight)
   };
-  private final Pigeon2 gyro =
-      new Pigeon2(Constants.SwerveConstants.kPigeonCanId, Constants.SwerveConstants.kCanBus);
   private final SwerveDriveOdometry odometry =
-      new SwerveDriveOdometry(kinematics, getGyroRotation(), getPositions());
+      new SwerveDriveOdometry(kinematics, new Rotation2d(), getPositions());
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
   private int telemetryCycles;
 
@@ -81,7 +78,7 @@ public class Swerve extends SubsystemBase {
 
   public void resetPose(Pose2d pose) {
     if (pose != null && hasValidModulePositions()) {
-      odometry.resetPosition(getGyroRotation(), getPositions(), pose);
+      odometry.resetPosition(new Rotation2d(), getPositions(), pose);
     }
   }
 
@@ -113,7 +110,7 @@ public class Swerve extends SubsystemBase {
   @Override
   public void periodic() {
     if (hasValidModulePositions()) {
-      odometry.update(getGyroRotation(), getPositions());
+      odometry.update(new Rotation2d(), getPositions());
     }
     telemetryCycles++;
     if (telemetryCycles % 5 != 0) {
@@ -126,18 +123,8 @@ public class Swerve extends SubsystemBase {
     SmartDashboard.putNumber("Swerve/PoseXMeters", getPose().getX());
     SmartDashboard.putNumber("Swerve/PoseYMeters", getPose().getY());
     SmartDashboard.putNumber("Swerve/PoseHeadingDegrees", getPose().getRotation().getDegrees());
-    SmartDashboard.putBoolean("Swerve/GyroConnected", gyro.getYaw().getStatus().isOK());
     for (SwerveModule module : modules) {
       module.publishTelemetry();
     }
-  }
-
-  private Rotation2d getGyroRotation() {
-    var yaw = gyro.getYaw();
-    double yawDegrees = yaw.getValueAsDouble();
-    if (!yaw.getStatus().isOK() || !Double.isFinite(yawDegrees)) {
-      return new Rotation2d();
-    }
-    return Rotation2d.fromDegrees(yawDegrees);
   }
 }

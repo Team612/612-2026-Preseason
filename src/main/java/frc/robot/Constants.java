@@ -10,12 +10,11 @@ public final class Constants {
 
   public static final class SwerveConstants {
     public static final String kCanBus = "rio"; // i think we havent switched to systemcore yet
-    public static final int kPigeonCanId = 0;
     public static final double kBatteryNominalVoltage = 12.0;
-    public static final double kBatteryFullVoltage = 12.6;
+    public static final double kBatteryFullVoltage = 12.0;
     public static final double kWheelBaseMeters = 0.555;
     public static final double kTrackWidthMeters = 0.550;
-    public static final double kWheelDiameterMeters = 0.1016;
+    public static final double kWheelDiameterMeters = 0.0889;
     public static final double kDriveReduction = 6.75;
     public static final double kMaxSpeedMetersPerSecond = 2.0;
     public static final double kMaxAngularSpeedRadPerSec = Math.PI * 2.0;
