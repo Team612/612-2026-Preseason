@@ -1,8 +1,12 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
+import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj.RobotController;
@@ -31,6 +35,10 @@ public class Swerve extends SubsystemBase {
     new SwerveModule("RearLeft", Constants.SwerveConstants.kRearLeft),
     new SwerveModule("RearRight", Constants.SwerveConstants.kRearRight)
   };
+  private final Pigeon2 gyro =
+      new Pigeon2(Constants.SwerveConstants.kPigeonCanId, Constants.SwerveConstants.kCanBus);
+  private final SwerveDriveOdometry odometry =
+      new SwerveDriveOdometry(kinematics, getGyroRotation(), getPositions());
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
   private int telemetryCycles;
 
@@ -67,6 +75,16 @@ public class Swerve extends SubsystemBase {
     return positions;
   }
 
+  public Pose2d getPose() {
+    return odometry.getPoseMeters();
+  }
+
+  public void resetPose(Pose2d pose) {
+    if (pose != null && hasValidModulePositions()) {
+      odometry.resetPosition(getGyroRotation(), getPositions(), pose);
+    }
+  }
+
   public boolean hasValidModulePositions() {
     for (SwerveModule module : modules) {
       if (!module.hasValidDrivePosition()) {
@@ -94,6 +112,9 @@ public class Swerve extends SubsystemBase {
 
   @Override
   public void periodic() {
+    if (hasValidModulePositions()) {
+      odometry.update(getGyroRotation(), getPositions());
+    }
     telemetryCycles++;
     if (telemetryCycles % 5 != 0) {
       return;
@@ -102,8 +123,21 @@ public class Swerve extends SubsystemBase {
     SmartDashboard.putNumber("Swerve/CommandedVyMetersPerSecond", commandedSpeeds.vyMetersPerSecond);
     SmartDashboard.putNumber("Swerve/CommandedOmegaRadiansPerSecond", commandedSpeeds.omegaRadiansPerSecond);
     SmartDashboard.putNumber("Swerve/BatteryVoltage", RobotController.getBatteryVoltage());
+    SmartDashboard.putNumber("Swerve/PoseXMeters", getPose().getX());
+    SmartDashboard.putNumber("Swerve/PoseYMeters", getPose().getY());
+    SmartDashboard.putNumber("Swerve/PoseHeadingDegrees", getPose().getRotation().getDegrees());
+    SmartDashboard.putBoolean("Swerve/GyroConnected", gyro.getYaw().getStatus().isOK());
     for (SwerveModule module : modules) {
       module.publishTelemetry();
     }
+  }
+
+  private Rotation2d getGyroRotation() {
+    var yaw = gyro.getYaw();
+    double yawDegrees = yaw.getValueAsDouble();
+    if (!yaw.getStatus().isOK() || !Double.isFinite(yawDegrees)) {
+      return new Rotation2d();
+    }
+    return Rotation2d.fromDegrees(yawDegrees);
   }
 }

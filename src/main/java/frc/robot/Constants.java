@@ -8,19 +8,21 @@ public final class Constants {
     private OperatorConstants() {}
   }
 
-  // idk jack about the hardware so srikar or mobomber gotta fill this up.
   public static final class SwerveConstants {
     public static final String kCanBus = "rio"; // i think we havent switched to systemcore yet
+    public static final int kPigeonCanId = 0;
+    public static final double kBatteryNominalVoltage = 12.0;
+    public static final double kBatteryFullVoltage = 12.6;
     public static final double kWheelBaseMeters = 0.555;
     public static final double kTrackWidthMeters = 0.550;
-    public static final double kWheelDiameterMeters = 0.0;
-    public static final double kDriveReduction = 0.0;
+    public static final double kWheelDiameterMeters = 0.1016;
+    public static final double kDriveReduction = 6.75;
     public static final double kMaxSpeedMetersPerSecond = 2.0;
     public static final double kMaxAngularSpeedRadPerSec = Math.PI * 2.0;
-    public static final double kMaxDriveVolts = 4.0;
-    public static final double kDriveP = 0.0;
+    public static final double kMaxDriveVolts = kBatteryNominalVoltage;
+    public static final double kDriveP = 1.0;
     public static final double kMaxPVolts = 0.5;
-    public static final boolean kEnableDriveVelocityCorrection = false;
+    public static final boolean kEnableDriveVelocityCorrection = true;
     public static final double kTurnP = 0.5;
     public static final double kTurnI = 0.0;
     public static final double kTurnD = 0.0;
@@ -50,7 +52,7 @@ public final class Constants {
       double encoderOffsetRotations,
       boolean driveInverted,
       boolean turnInverted) {
-    public boolean hasConfiguredCanIds() { // must config later
+    public boolean hasConfiguredCanIds() {
       return driveCanId >= 0 && turnCanId >= 0 && encoderCanId >= 0;
     }
   }
