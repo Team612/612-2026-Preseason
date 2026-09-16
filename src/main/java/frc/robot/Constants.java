@@ -36,6 +36,7 @@ public final class Constants {
     public static final double kRotationSlewRadPerSecSquared = Math.PI * 2.0;
     public static final double kLowSpeedThresholdMetersPerSecond = 0.05;
 
+    // Test placeholder values: assume no motor inversion and no encoder offsets yet.
     public static final ModuleConfiguration kFrontLeft = new ModuleConfiguration(4, 5, 3, 0.0, false, false);
     public static final ModuleConfiguration kFrontRight = new ModuleConfiguration(2, 3, 2, 0.0, false, false);
     public static final ModuleConfiguration kRearLeft = new ModuleConfiguration(6, 7, 4, 0.0, false, false);

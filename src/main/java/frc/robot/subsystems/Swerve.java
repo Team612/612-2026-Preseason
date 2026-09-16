@@ -34,6 +34,7 @@ public class Swerve extends SubsystemBase {
     new SwerveModule("RearLeft", Constants.SwerveConstants.kRearLeft),
     new SwerveModule("RearRight", Constants.SwerveConstants.kRearRight)
   };
+  // Test placeholder: no gyro is connected yet, so heading stays at zero for now.
   private final SwerveDriveOdometry odometry =
       new SwerveDriveOdometry(kinematics, new Rotation2d(), getPositions());
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
