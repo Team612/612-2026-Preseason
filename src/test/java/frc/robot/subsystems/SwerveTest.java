@@ -1,8 +1,10 @@
 package frc.robot.subsystems;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import frc.robot.Constants;
 import org.junit.jupiter.api.Test;
@@ -58,5 +60,25 @@ class SwerveTest {
   @Test
   void nonzeroChassisCommandIsNotTreatedAsStopped() {
     assertFalse(Swerve.isZeroCommand(new ChassisSpeeds(0.01, 0.0, 0.0)));
+  }
+
+  @Test
+  void invalidGyroReadingsAreRejected() {
+    assertNull(Swerve.headingFromSignal(false, 45.0));
+    assertNull(Swerve.headingFromSignal(true, Double.NaN));
+  }
+
+  @Test
+  void fieldRelativeSpeedsRequireAValidHeading() {
+    assertNull(Swerve.toRobotRelativeSpeeds(new ChassisSpeeds(1.0, 0.0, 0.0), null));
+  }
+
+  @Test
+  void fieldRelativeSpeedsAreConvertedUsingHeading() {
+    ChassisSpeeds robotRelativeSpeeds =
+        Swerve.toRobotRelativeSpeeds(new ChassisSpeeds(1.0, 0.0, 0.0), Rotation2d.fromDegrees(90.0));
+
+    assertTrue(Math.abs(robotRelativeSpeeds.vxMetersPerSecond) < 1e-9);
+    assertTrue(Math.abs(robotRelativeSpeeds.vyMetersPerSecond + 1.0) < 1e-9);
   }
 }

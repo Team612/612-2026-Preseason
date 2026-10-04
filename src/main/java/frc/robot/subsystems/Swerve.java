@@ -30,6 +30,7 @@ public class Swerve extends SubsystemBase {
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
   private int telemetryCycles;
   private boolean odometryInitialized;
+  private boolean headingResetPending;
   private boolean previousModulesReady = true;
 
   public Swerve() {
@@ -70,30 +71,48 @@ public class Swerve extends SubsystemBase {
 
   /** Drives using field relative translation and the current Pigeon 2 headings */
   public void driveFieldRelative(ChassisSpeeds fieldRelativeSpeeds) {
-    if (fieldRelativeSpeeds == null) {
+    ChassisSpeeds robotRelativeSpeeds = toRobotRelativeSpeeds(fieldRelativeSpeeds, getValidHeading());
+    if (robotRelativeSpeeds == null) {
       stop();
       return;
     }
-    drive(
-        ChassisSpeeds.fromFieldRelativeSpeeds(
-            fieldRelativeSpeeds.vxMetersPerSecond,
-            fieldRelativeSpeeds.vyMetersPerSecond,
-            fieldRelativeSpeeds.omegaRadiansPerSecond,
-            getHeading()));
+    drive(robotRelativeSpeeds);
   }
 
   /** Returns the counter clockwise-positive robot heading (Pigeon 2) */
   public Rotation2d getHeading() {
+    Rotation2d heading = getValidHeading();
+    return heading == null ? new Rotation2d() : heading;
+  }
+
+  private Rotation2d getValidHeading() {
     var yaw = gyro.getYaw().refresh();
-    if (!yaw.getStatus().isOK() || !Double.isFinite(yaw.getValueAsDouble())) {
-      return new Rotation2d();
+    return headingFromSignal(yaw.getStatus().isOK(), yaw.getValueAsDouble());
+  }
+
+  static Rotation2d headingFromSignal(boolean statusOk, double yawDegrees) {
+    if (!statusOk || !Double.isFinite(yawDegrees)) {
+      return null;
     }
-    return Rotation2d.fromDegrees(yaw.getValueAsDouble());
+    return Rotation2d.fromDegrees(yawDegrees);
+  }
+
+  static ChassisSpeeds toRobotRelativeSpeeds(ChassisSpeeds fieldRelativeSpeeds, Rotation2d heading) {
+    if (fieldRelativeSpeeds == null || heading == null) {
+      return null;
+    }
+    return ChassisSpeeds.fromFieldRelativeSpeeds(
+        fieldRelativeSpeeds.vxMetersPerSecond,
+        fieldRelativeSpeeds.vyMetersPerSecond,
+        fieldRelativeSpeeds.omegaRadiansPerSecond,
+        heading);
   }
 
   /** Set the current physical robot direction as the zero degree field heading */
   public void resetHeading() {
     gyro.reset();
+    headingResetPending = true;
+    odometryInitialized = false;
   }
 
   public SwerveModuleState[] getStates() {
@@ -117,9 +136,11 @@ public class Swerve extends SubsystemBase {
   }
 
   public void resetPose(Pose2d pose) {
-    if (pose != null && hasValidModulePositions()) {
-      odometry.resetPosition(getHeading(), getPositions(), pose);
+    Rotation2d heading = getValidHeading();
+    if (pose != null && heading != null && hasValidModulePositions()) {
+      odometry.resetPosition(heading, getPositions(), pose);
       odometryInitialized = true;
+      headingResetPending = false;
     }
   }
 
@@ -175,12 +196,20 @@ public class Swerve extends SubsystemBase {
 
   @Override
   public void periodic() {
-    if (hasValidModulePositions()) {
+    Rotation2d heading = getValidHeading();
+    if (heading == null) {
+      odometryInitialized = false;
+    } else if (hasValidModulePositions()) {
       if (!odometryInitialized) {
-        odometry.resetPosition(getHeading(), getPositions(), odometry.getPoseMeters());
+        Pose2d pose = odometry.getPoseMeters();
+        if (headingResetPending) {
+          pose = new Pose2d(pose.getTranslation(), new Rotation2d());
+          headingResetPending = false;
+        }
+        odometry.resetPosition(heading, getPositions(), pose);
         odometryInitialized = true;
       } else {
-        odometry.update(getHeading(), getPositions());
+        odometry.update(heading, getPositions());
       }
     }
     reportModuleHealth();
