@@ -31,10 +31,16 @@ public class ArcadeDrive extends Command {
       swerve.stop();
       return;
     }
+
+    double linearMagnitude = Math.hypot(forward, strafe);
+    double linearScale = linearMagnitude > 1.0 ? 1.0 / linearMagnitude : 1.0;
+    double normalizedForward = forward * linearScale;
+    double normalizedStrafe = strafe * linearScale;
+
     ChassisSpeeds requestedSpeeds =
         new ChassisSpeeds(
-            forward * Constants.xPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
-            strafe * Constants.yPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
+            normalizedForward * Constants.xPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
+            normalizedStrafe * Constants.yPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
             rotation
                 * Constants.zPercent
                 * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
