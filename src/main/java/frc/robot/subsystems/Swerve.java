@@ -27,9 +27,11 @@ public class Swerve extends SubsystemBase {
   private final Pigeon2 gyro =
       new Pigeon2(Constants.SwerveConstants.kPigeonCanId, Constants.SwerveConstants.kCanBus);
   private final SwerveDriveOdometry odometry;
+  private SwerveModulePosition[] lastOdometryPositions;
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
   private int telemetryCycles;
   private boolean odometryInitialized;
+  private boolean odometryNeedsRebase;
   private boolean headingResetPending;
   private boolean previousModulesReady = true;
 
@@ -45,6 +47,7 @@ public class Swerve extends SubsystemBase {
       new SwerveModule("RearLeft", configurations[2], hardwareEnabled),
       new SwerveModule("RearRight", configurations[3], hardwareEnabled)
     };
+    lastOdometryPositions = getPositions();
     odometry = new SwerveDriveOdometry(kinematics, getHeading(), getPositions());
   }
 
@@ -139,14 +142,16 @@ public class Swerve extends SubsystemBase {
     Rotation2d heading = getValidHeading();
     if (pose != null && heading != null && hasValidModulePositions()) {
       odometry.resetPosition(heading, getPositions(), pose);
+      lastOdometryPositions = getPositions();
       odometryInitialized = true;
+      odometryNeedsRebase = false;
       headingResetPending = false;
     }
   }
 
   public boolean hasValidModulePositions() {
     for (SwerveModule module : modules) {
-      if (!module.hasValidPosition()) {
+      if (module.getPositionIfValid() == null) {
         return false;
       }
     }
@@ -199,17 +204,40 @@ public class Swerve extends SubsystemBase {
     Rotation2d heading = getValidHeading();
     if (heading == null) {
       odometryInitialized = false;
-    } else if (hasValidModulePositions()) {
-      if (!odometryInitialized) {
-        Pose2d pose = odometry.getPoseMeters();
-        if (headingResetPending) {
-          pose = new Pose2d(pose.getTranslation(), new Rotation2d());
-          headingResetPending = false;
+    } else {
+      SwerveModulePosition[] currentPositions = new SwerveModulePosition[modules.length];
+      boolean allPositionsValid = true;
+      for (int index = 0; index < modules.length; index++) {
+        currentPositions[index] = modules[index].getPositionIfValid();
+        if (currentPositions[index] == null) {
+          allPositionsValid = false;
         }
-        odometry.resetPosition(heading, getPositions(), pose);
-        odometryInitialized = true;
+      }
+      SwerveModulePosition[] positions =
+          holdLastValidPositions(currentPositions, lastOdometryPositions);
+
+      if (!odometryInitialized) {
+        if (allPositionsValid) {
+          Pose2d pose = odometry.getPoseMeters();
+          if (headingResetPending) {
+            pose = new Pose2d(pose.getTranslation(), new Rotation2d());
+            headingResetPending = false;
+          }
+          odometry.resetPosition(heading, positions, pose);
+          lastOdometryPositions = positions;
+          odometryInitialized = true;
+          odometryNeedsRebase = false;
+        }
+      } else if (allPositionsValid && odometryNeedsRebase) {
+        odometry.resetPosition(heading, positions, odometry.getPoseMeters());
+        lastOdometryPositions = positions;
+        odometryNeedsRebase = false;
       } else {
-        odometry.update(heading, getPositions());
+        odometry.update(heading, positions);
+        lastOdometryPositions = positions;
+        if (!allPositionsValid) {
+          odometryNeedsRebase = true;
+        }
       }
     }
     reportModuleHealth();
@@ -248,6 +276,16 @@ public class Swerve extends SubsystemBase {
     return speeds.vxMetersPerSecond == 0.0
         && speeds.vyMetersPerSecond == 0.0
         && speeds.omegaRadiansPerSecond == 0.0;
+  }
+
+  static SwerveModulePosition[] holdLastValidPositions(
+      SwerveModulePosition[] currentPositions, SwerveModulePosition[] lastPositions) {
+    SwerveModulePosition[] positions = new SwerveModulePosition[currentPositions.length];
+    for (int index = 0; index < currentPositions.length; index++) {
+      positions[index] =
+          currentPositions[index] == null ? lastPositions[index] : currentPositions[index];
+    }
+    return positions;
   }
 
   private static Constants.ModuleConfiguration[] moduleConfigurations() {

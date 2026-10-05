@@ -1,11 +1,13 @@
 package frc.robot.subsystems;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import frc.robot.Constants;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +57,25 @@ class SwerveTest {
   @Test
   void zeroChassisCommandIsRecognizedAsStopped() {
     assertTrue(Swerve.isZeroCommand(new ChassisSpeeds()));
+  }
+
+  @Test
+  void invalidModulePositionUsesLastTrustedPosition() {
+    SwerveModulePosition[] previous = {
+      new SwerveModulePosition(1.0, Rotation2d.fromDegrees(10.0)),
+      new SwerveModulePosition(2.0, Rotation2d.fromDegrees(20.0))
+    };
+    SwerveModulePosition[] current = {
+      new SwerveModulePosition(1.5, Rotation2d.fromDegrees(15.0)),
+      null
+    };
+
+    SwerveModulePosition[] positions = Swerve.holdLastValidPositions(current, previous);
+
+    assertEquals(1.5, positions[0].distanceMeters, 1e-9);
+    assertEquals(15.0, positions[0].angle.getDegrees(), 1e-9);
+    assertEquals(2.0, positions[1].distanceMeters, 1e-9);
+    assertEquals(20.0, positions[1].angle.getDegrees(), 1e-9);
   }
 
   @Test

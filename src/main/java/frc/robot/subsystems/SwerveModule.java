@@ -140,14 +140,18 @@ public class SwerveModule {
   }
 
   public SwerveModulePosition getPosition() {
+    SwerveModulePosition position = getPositionIfValid();
+    return position == null ? new SwerveModulePosition(0.0, lastTargetAngle) : position;
+  }
+
+  public SwerveModulePosition getPositionIfValid() {
     Rotation2d angle = getAngle();
-    if (angle == null || !hasValidDrivePosition()) return new SwerveModulePosition(0.0, lastTargetAngle);
+    if (angle == null || driveMotor == null || !hasValidDriveConversion()) return null;
     var position = driveMotor.getPosition();
     double motorRotations = position.getValueAsDouble();
-    if (!position.getStatus().isOK() || !Double.isFinite(motorRotations)) return new SwerveModulePosition(0.0, lastTargetAngle);
+    if (!position.getStatus().isOK() || !Double.isFinite(motorRotations)) return null;
     double distanceMeters = motorRotations / Constants.SwerveConstants.kDriveReduction * wheelCircumferenceMeters();
-    return Double.isFinite(distanceMeters) ? new SwerveModulePosition(distanceMeters, angle)
-        : new SwerveModulePosition(0.0, lastTargetAngle);
+    return Double.isFinite(distanceMeters) ? new SwerveModulePosition(distanceMeters, angle) : null;
   }
 
   public boolean hasValidDriveMeasurement() {
@@ -163,7 +167,7 @@ public class SwerveModule {
   }
 
   public boolean hasValidPosition() {
-    return getAngle() != null && hasValidDrivePosition();
+    return getPositionIfValid() != null;
   }
 
   public boolean isReady() {
