@@ -31,6 +31,7 @@ public class SwerveModule {
       new TrapezoidProfile.Constraints(Constants.SwerveConstants.kMaxTurnRadPerSec,
           Constants.SwerveConstants.kMaxTurnAccelRadPerSecSquared));
   private Rotation2d lastTargetAngle = new Rotation2d();
+  private boolean turnControllerInitialized;
   private double targetSpeed;
   private double speedScale;
   private double baseVolts;
@@ -90,9 +91,9 @@ public class SwerveModule {
       stop();
       return;
     }
+    initializeTurnController(angle);
     if (Math.abs(targetState.speedMetersPerSecond) < Constants.SwerveConstants.kLowSpeedThresholdMetersPerSecond) {
       lastTargetAngle = angle;
-      turnController.reset(angle.getRadians());
       stop();
       return;
     }
@@ -114,6 +115,13 @@ public class SwerveModule {
     turnVolts = finiteOrZero(MathUtil.clamp(output, -Constants.SwerveConstants.kMaxTurnVolts,
         Constants.SwerveConstants.kMaxTurnVolts));
     turnMotor.setControl(turnVoltageRequest.withOutput(turnVolts));
+  }
+
+  private void initializeTurnController(Rotation2d angle) {
+    if (!turnControllerInitialized) {
+      turnController.reset(angle.getRadians());
+      turnControllerInitialized = true;
+    }
   }
 
   private void commandDrive(double targetSpeed) {
@@ -177,7 +185,11 @@ public class SwerveModule {
   public void stop() {
     targetSpeed = speedScale = baseVolts = pVolts = driveVolts = turnVolts = 0.0;
     Rotation2d angle = getAngle();
-    if (angle != null) lastTargetAngle = angle;
+    if (angle != null) {
+      lastTargetAngle = angle;
+      turnController.reset(angle.getRadians());
+      turnControllerInitialized = true;
+    }
     if (driveMotor != null) {
       driveMotor.setControl(driveVoltageRequest.withOutput(0.0));
       turnMotor.setControl(turnVoltageRequest.withOutput(0.0));
