@@ -67,6 +67,30 @@ class SwerveTest {
   }
 
   @Test
+  void moduleOptimizationReversesDriveInsteadOfTurningMoreThanNinetyDegrees() {
+    SwerveModuleState requested =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(170.0));
+
+    SwerveModuleState optimized =
+        SwerveModule.optimizeState(requested, Rotation2d.fromDegrees(0.0));
+
+    assertEquals(-1.0, optimized.speedMetersPerSecond, 1e-9);
+    assertEquals(-10.0, optimized.angle.getDegrees(), 1e-9);
+  }
+
+  @Test
+  void moduleOptimizationKeepsDriveDirectionForShortSteeringTurn() {
+    SwerveModuleState requested =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(45.0));
+
+    SwerveModuleState optimized =
+        SwerveModule.optimizeState(requested, Rotation2d.fromDegrees(0.0));
+
+    assertEquals(1.0, optimized.speedMetersPerSecond, 1e-9);
+    assertEquals(45.0, optimized.angle.getDegrees(), 1e-9);
+  }
+
+  @Test
   void incompleteCanMapsAreRejected() {
     assertFalse(Swerve.hasValidCanIds(null));
     assertFalse(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[3]));

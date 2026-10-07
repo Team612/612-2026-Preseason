@@ -119,16 +119,29 @@ public class SwerveModule {
       stop();
       return;
     }
-    SwerveModuleState moduleState = applySteeringAlignmentScale(targetState, angle);
+    SwerveModuleState optimizedState = optimizeState(targetState, angle);
+    SwerveModuleState moduleState = applySteeringAlignmentScale(optimizedState, angle);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
     lastTargetAngle = moduleState.angle;
     commandTurn(angle, moduleState.angle);
     commandDrive(moduleState.speedMetersPerSecond);
   }
 
+  /** Chooses the equivalent wheel direction that requires no more than 90 degrees of steering. */
+  static SwerveModuleState optimizeState(
+      SwerveModuleState requestedState, Rotation2d measuredAngle) {
+    double angleError = requestedState.angle.minus(measuredAngle).getRadians();
+    if (Math.abs(angleError) > Math.PI / 2.0) {
+      Rotation2d reversedAngle = requestedState.angle.rotateBy(Rotation2d.fromRadians(Math.PI));
+      return new SwerveModuleState(-requestedState.speedMetersPerSecond, reversedAngle);
+    }
+    return new SwerveModuleState(
+        requestedState.speedMetersPerSecond, requestedState.angle);
+  }
+
   /**
-   * Slows the wheel while it turns toward the requested angle without changing that angle or
-   * reversing the wheel. This keeps feedback noise from flipping the steering target by pi.
+   * Slows the wheel while it turns toward the requested angle. State optimization should run first
+   * so the steering controller always takes the shorter path.
    */
   static SwerveModuleState applySteeringAlignmentScale(
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
