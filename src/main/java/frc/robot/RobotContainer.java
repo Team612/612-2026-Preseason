@@ -14,7 +14,7 @@ public class RobotContainer {
   private final ArcadeDrive arcadeDrive = new ArcadeDrive(swerve, driverController);
 
   public RobotContainer() {
-    // Drive whenever no other command currently owns the drivetrain.
+    // Drive whenever no oher command currently owns the drivetrain.
     swerve.setDefaultCommand(arcadeDrive);
     driverController.rightBumper().onTrue(Commands.runOnce(arcadeDrive::toggleDriveMode));
     driverController.start().onTrue(Commands.runOnce(swerve::resetHeading, swerve));

@@ -22,22 +22,22 @@ public final class Constants {
           new Translation2d(-wheelBase / 2.0, -trackWidth / 2.0));
 
   public static final double frontLEncoderOffset = 0.277;
-  public static final int frontLSteerMotorID = 4;
-  public static final int frontLDriveMotorID = 3;
-  public static final int frontLCANcoderID = 3;
+  public static final int frontLSteerMotorID = 2;
+  public static final int frontLDriveMotorID = 1;
+  public static final int frontLCANcoderID = 12;
   public static final double frontREncoderOffset = 0.398;
-  public static final int frontRSteerMotorID = 6;
-  public static final int frontRDriveMotorID = 5;
-  public static final int frontRCANcoderID = 2;
+  public static final int frontRSteerMotorID = 4;
+  public static final int frontRDriveMotorID = 3;
+  public static final int frontRCANcoderID = 13;
   public static final double backLEncoderOffset = -0.260;
   
-  public static final int backLSteerMotorID = 1;
-  public static final int backLDriveMotorID = 2;
-  public static final int backLCANcoderID = 4;
+  public static final int backLSteerMotorID = 8;
+  public static final int backLDriveMotorID = 7;
+  public static final int backLCANcoderID = 11;
   public static final double backREncoderOffset = 0.022;
-  public static final int backRSteerMotorID = 8;
-  public static final int backRDriveMotorID = 7;
-  public static final int backRCANcoderID = 1;
+  public static final int backRSteerMotorID = 6;
+  public static final int backRDriveMotorID = 5;
+  public static final int backRCANcoderID = 9;
 
   public static final class OperatorConstants {
     public static final int kDriverControllerPort = Constants.kDriverControllerPort;
