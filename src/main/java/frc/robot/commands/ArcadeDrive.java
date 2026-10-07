@@ -29,6 +29,10 @@ public class ArcadeDrive extends Command {
   @Override
   public void execute() {
     SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
+    SmartDashboard.putBoolean("Drive/ControllerConnected", controller.getHID().isConnected());
+    SmartDashboard.putNumber("Drive/LeftX", controller.getLeftX());
+    SmartDashboard.putNumber("Drive/LeftY", controller.getLeftY());
+    SmartDashboard.putNumber("Drive/RightX", controller.getRightX());
     Translation2d translationInput =
         applyTranslationDeadband(
             -controller.getLeftY(),
@@ -46,6 +50,10 @@ public class ArcadeDrive extends Command {
 
     ChassisSpeeds requestedSpeeds =
         toChassisSpeeds(forwardInput, strafeInput, rotationInput);
+    SmartDashboard.putNumber("Drive/RequestedVxMetersPerSecond", requestedSpeeds.vxMetersPerSecond);
+    SmartDashboard.putNumber("Drive/RequestedVyMetersPerSecond", requestedSpeeds.vyMetersPerSecond);
+    SmartDashboard.putNumber(
+        "Drive/RequestedOmegaRadiansPerSecond", requestedSpeeds.omegaRadiansPerSecond);
 
     if (fieldRelativeMode) {
       swerve.driveFieldRelative(requestedSpeeds);

@@ -7,10 +7,10 @@ import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 public final class Constants {
   public static final double trackWidth = 0.550;
   public static final double wheelBase = 0.555;
-  // Fractions of the configured drivetrain limits used for driver controley
-  public static final double xPercent = 0.2;
-  public static final double yPercent = 0.2;
-  public static final double zPercent = 0.2;
+  // Full driver-stick travel maps to the configured drivetrain limits.
+  public static final double xPercent = 1.0;
+  public static final double yPercent = 1.0;
+  public static final double zPercent = 1.0;
   public static final double DEADBAND = 0.05;
   public static final int kDriverControllerPort = 0;
 
@@ -63,7 +63,7 @@ public final class Constants {
     public static final double kDriveP = 1.0;
     public static final double kMaxPVolts = 0.5;
     public static final boolean kEnableDriveVelocityCorrection = true;
-    public static final double kTurnP = 0.5;
+    public static final double kTurnP = 4.0;
     public static final double kTurnI = 0.0;
     public static final double kTurnD = 0.0;
     public static final double kMaxTurnRadPerSec = Math.PI * 2.0;

@@ -70,21 +70,33 @@ public class SwerveModule {
   /** Builds common motor settings while choosing the correct limits and inversion per motor. */
   private TalonFXConfiguration createMotorConfiguration(boolean isDriveMotor) {
     TalonFXConfiguration motorConfiguration = new TalonFXConfiguration();
-    motorConfiguration.CurrentLimits.SupplyCurrentLimit =
-        isDriveMotor
-            ? Constants.SwerveConstants.kDriveSupplyLimitAmps
-            : Constants.SwerveConstants.kTurnSupplyLimitAmps;
+    if (isDriveMotor) {
+      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
+          Constants.SwerveConstants.kDriveSupplyLimitAmps;
+    } else {
+      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
+          Constants.SwerveConstants.kTurnSupplyLimitAmps;
+    }
     motorConfiguration.CurrentLimits.SupplyCurrentLimitEnable = true;
-    motorConfiguration.CurrentLimits.StatorCurrentLimit =
-        isDriveMotor
-            ? Constants.SwerveConstants.kDriveStatorLimitAmps
-            : Constants.SwerveConstants.kTurnStatorLimitAmps;
+    if (isDriveMotor) {
+      motorConfiguration.CurrentLimits.StatorCurrentLimit =
+          Constants.SwerveConstants.kDriveStatorLimitAmps;
+    } else {
+      motorConfiguration.CurrentLimits.StatorCurrentLimit =
+          Constants.SwerveConstants.kTurnStatorLimitAmps;
+    }
     motorConfiguration.CurrentLimits.StatorCurrentLimitEnable = true;
-    boolean inverted = isDriveMotor ? configuration.driveInverted() : configuration.turnInverted();
-    motorConfiguration.MotorOutput.Inverted =
-        inverted
-            ? InvertedValue.Clockwise_Positive
-            : InvertedValue.CounterClockwise_Positive;
+    boolean inverted;
+    if (isDriveMotor) {
+      inverted = configuration.driveInverted();
+    } else {
+      inverted = configuration.turnInverted();
+    }
+    if (inverted) {
+      motorConfiguration.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+    } else {
+      motorConfiguration.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    }
     motorConfiguration.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     return motorConfiguration;
   }
@@ -198,7 +210,10 @@ public class SwerveModule {
 
   public SwerveModulePosition getPosition() {
     SwerveModulePosition position = getPositionIfValid();
-    return position == null ? new SwerveModulePosition(0.0, lastTargetAngle) : position;
+    if (position == null) {
+      return new SwerveModulePosition(0.0, lastTargetAngle);
+    }
+    return position;
   }
 
   public SwerveModulePosition getPositionIfValid() {
@@ -215,9 +230,10 @@ public class SwerveModule {
         motorRotations
             / Constants.SwerveConstants.kDriveReduction
             * wheelCircumferenceMeters();
-    return Double.isFinite(distanceMeters)
-        ? new SwerveModulePosition(distanceMeters, angle)
-        : null;
+    if (!Double.isFinite(distanceMeters)) {
+      return null;
+    }
+    return new SwerveModulePosition(distanceMeters, angle);
   }
 
   public boolean hasValidDriveMeasurement() {
@@ -242,9 +258,7 @@ public class SwerveModule {
 
   public boolean isReady() {
     return configurationSuccessful
-        && getAngle() != null
-        && hasValidDriveMeasurement()
-        && hasValidDrivePosition();
+        && getAngle() != null;
   }
 
   public void stop() {
@@ -275,29 +289,36 @@ public class SwerveModule {
         name + "/TargetSpeedMetersPerSecond", targetSpeedMetersPerSecond);
     SmartDashboard.putBoolean(name + "/DriveMeasurementValid", hasValidDriveMeasurement());
     SmartDashboard.putBoolean(name + "/Ready", isReady());
-    SmartDashboard.putNumber(
-        name + "/MeasuredSpeedMetersPerSecond",
-        hasValidDriveMeasurement() ? getSpeed() : 0.0);
+    double measuredSpeed = 0.0;
+    if (hasValidDriveMeasurement()) {
+      measuredSpeed = getSpeed();
+    }
+    SmartDashboard.putNumber(name + "/MeasuredSpeedMetersPerSecond", measuredSpeed);
     SmartDashboard.putNumber(name + "/SpeedScale", driveSpeedScale);
     SmartDashboard.putNumber(name + "/BaseVolts", driveBaseVolts);
     SmartDashboard.putNumber(name + "/PVolts", driveCorrectionVolts);
     SmartDashboard.putNumber(name + "/DriveVolts", driveVolts);
-    SmartDashboard.putNumber(name + "/AngleRadians", angle == null ? 0.0 : angle.getRadians());
+    double angleRadians = 0.0;
+    if (angle != null) {
+      angleRadians = angle.getRadians();
+    }
+    SmartDashboard.putNumber(name + "/AngleRadians", angleRadians);
     SmartDashboard.putNumber(name + "/TargetAngleRadians", lastTargetAngle.getRadians());
+    double turnErrorRadians = 0.0;
+    if (angle != null) {
+      turnErrorRadians = turnController.getPositionError();
+    }
     SmartDashboard.putNumber(
-        name + "/TurnErrorRadians",
-        angle == null ? 0.0 : turnController.getPositionError());
+        name + "/TurnErrorRadians", turnErrorRadians);
     SmartDashboard.putNumber(name + "/TurnVolts", turnVolts);
-    SmartDashboard.putNumber(
-        name + "/DriveSupplyCurrentAmps",
-        driveMotor == null
-            ? 0.0
-            : finiteOrZero(driveMotor.getSupplyCurrent().getValueAsDouble()));
-    SmartDashboard.putNumber(
-        name + "/DriveStatorCurrentAmps",
-        driveMotor == null
-            ? 0.0
-            : finiteOrZero(driveMotor.getStatorCurrent().getValueAsDouble()));
+    double supplyCurrentAmps = 0.0;
+    double statorCurrentAmps = 0.0;
+    if (driveMotor != null) {
+      supplyCurrentAmps = finiteOrZero(driveMotor.getSupplyCurrent().getValueAsDouble());
+      statorCurrentAmps = finiteOrZero(driveMotor.getStatorCurrent().getValueAsDouble());
+    }
+    SmartDashboard.putNumber(name + "/DriveSupplyCurrentAmps", supplyCurrentAmps);
+    SmartDashboard.putNumber(name + "/DriveStatorCurrentAmps", statorCurrentAmps);
   }
 
   /** Reads the absolute encoder and subtracts its configured zero offset. */
@@ -364,6 +385,9 @@ public class SwerveModule {
   }
 
   private double finiteOrZero(double value) {
-    return Double.isFinite(value) ? value : 0.0;
+    if (!Double.isFinite(value)) {
+      return 0.0;
+    }
+    return value;
   }
 }

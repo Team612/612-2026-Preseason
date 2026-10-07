@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class SwerveTest {
   @Test
-  void currentCanMapIsAcceptedEvenWhenDeviceIdsAreDuplicated() {
+  void currentCanMapPassesCanIdRangeValidation() {
     assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
@@ -24,12 +24,22 @@ class SwerveTest {
   }
 
   @Test
-  void duplicateCanIdsDoNotDisableModuleConstruction() {
+  void duplicateCanIdsAreNotValidatedHere() {
     assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
       new Constants.ModuleConfiguration(10, 11, 3, 0.0, false, false)
+    }));
+  }
+
+  @Test
+  void pigeonCanIdOverlapIsNotValidatedHere() {
+    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+      new Constants.ModuleConfiguration(0, 2, 3, 0.0, false, false),
+      new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
+      new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
+      new Constants.ModuleConfiguration(10, 11, 12, 0.0, false, false)
     }));
   }
 
@@ -136,4 +146,5 @@ class SwerveTest {
     assertTrue(Math.abs(robotRelativeSpeeds.vxMetersPerSecond) < 1e-9);
     assertTrue(Math.abs(robotRelativeSpeeds.vyMetersPerSecond + 1.0) < 1e-9);
   }
+
 }

@@ -97,7 +97,7 @@ public class Swerve extends SubsystemBase {
     ChassisSpeeds robotRelativeSpeeds = toRobotRelativeSpeeds(fieldRelativeSpeeds, getValidHeading());
     if (robotRelativeSpeeds == null) {
       stop();
-      return;
+      return; // do da retuirning yes i used ai to generate comments because nobody spends time makin em
     }
     drive(robotRelativeSpeeds);
   }
@@ -105,7 +105,10 @@ public class Swerve extends SubsystemBase {
   /** Returns the counter-clockwise-positive gyro heading; returns zero if the gyro is unavailable. */
   public Rotation2d getHeading() {
     Rotation2d heading = getValidHeading();
-    return heading == null ? new Rotation2d() : heading;
+    if (heading == null) {
+      return new Rotation2d();
+    }
+    return heading;
   }
 
   private Rotation2d getValidHeading() {
@@ -303,13 +306,20 @@ public class Swerve extends SubsystemBase {
     if (configurations == null || configurations.length != 4) {
       return false;
     }
+    int pigeonCanId = Constants.SwerveConstants.kPigeonCanId;
+    if (!isValidCanId(pigeonCanId)) {
+      return false;
+    }
     for (Constants.ModuleConfiguration configuration : configurations) {
       if (configuration == null || !configuration.hasConfiguredCanIds()) {
         return false;
       }
     }
-    int pigeonCanId = Constants.SwerveConstants.kPigeonCanId;
-    return pigeonCanId >= 0 && pigeonCanId <= 62;
+    return true;
+  }
+
+  private static boolean isValidCanId(int canId) {
+    return canId >= 0 && canId <= 62;
   }
 
   static boolean isZeroCommand(ChassisSpeeds speeds) {
@@ -323,8 +333,11 @@ public class Swerve extends SubsystemBase {
       SwerveModulePosition[] currentPositions, SwerveModulePosition[] lastPositions) {
     SwerveModulePosition[] positions = new SwerveModulePosition[currentPositions.length];
     for (int index = 0; index < currentPositions.length; index++) {
-      positions[index] =
-          currentPositions[index] == null ? lastPositions[index] : currentPositions[index];
+      if (currentPositions[index] == null) {
+        positions[index] = lastPositions[index];
+      } else {
+        positions[index] = currentPositions[index];
+      }
     }
     return positions;
   }
