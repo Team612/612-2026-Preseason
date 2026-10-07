@@ -8,18 +8,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
+import edu.wpi.first.math.kinematics.SwerveModuleState;
 import frc.robot.Constants;
 import org.junit.jupiter.api.Test;
 
 class SwerveTest {
   @Test
-  void currentCanMapIsAcceptedWhenAllIdsAreInRange() {
+  void currentCanMapIsAcceptedEvenWhenDeviceIdsAreDuplicated() {
     assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
       Constants.SwerveConstants.kRearLeft,
       Constants.SwerveConstants.kRearRight
     }));
+  }
+
+  @Test
+  void duplicateCanIdsDoNotDisableModuleConstruction() {
+    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+      new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
+      new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
+      new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
+      new Constants.ModuleConfiguration(10, 11, 3, 0.0, false, false)
+    }));
+  }
+
+  @Test
+  void straightForwardChassisCommandPointsAllWheelsForward() {
+    SwerveModuleState[] states =
+        Swerve.calculateModuleStates(new ChassisSpeeds(1.0, 0.0, 0.0));
+
+    assertEquals(4, states.length);
+    for (SwerveModuleState state : states) {
+      assertEquals(1.0, state.speedMetersPerSecond, 1e-9);
+      assertEquals(0.0, state.angle.getRadians(), 1e-9);
+    }
+  }
+
+  @Test
+  void straightStrafeChassisCommandPointsAllWheelsSideways() {
+    SwerveModuleState[] states =
+        Swerve.calculateModuleStates(new ChassisSpeeds(0.0, 1.0, 0.0));
+
+    for (SwerveModuleState state : states) {
+      assertEquals(1.0, state.speedMetersPerSecond, 1e-9);
+      assertEquals(Math.PI / 2.0, state.angle.getRadians(), 1e-9);
+    }
   }
 
   @Test

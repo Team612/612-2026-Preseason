@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+//imports
 import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -15,13 +16,11 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
 
+/** Coordinates the four modules, gyro, drive kinematics, and robot-pose estimate.
+ * drives car
+ */
 public class Swerve extends SubsystemBase {
-  private final SwerveDriveKinematics kinematics =
-      new SwerveDriveKinematics(
-          new Translation2d(Constants.SwerveConstants.kWheelBaseMeters / 2.0, Constants.SwerveConstants.kTrackWidthMeters / 2.0),
-          new Translation2d(Constants.SwerveConstants.kWheelBaseMeters / 2.0, -Constants.SwerveConstants.kTrackWidthMeters / 2.0),
-          new Translation2d(-Constants.SwerveConstants.kWheelBaseMeters / 2.0, Constants.SwerveConstants.kTrackWidthMeters / 2.0),
-          new Translation2d(-Constants.SwerveConstants.kWheelBaseMeters / 2.0, -Constants.SwerveConstants.kTrackWidthMeters / 2.0));
+  private static final SwerveDriveKinematics KINEMATICS = createKinematics();
   private final SwerveModule[] modules;
   private final boolean hardwareEnabled;
   private final Pigeon2 gyro =
@@ -29,9 +28,13 @@ public class Swerve extends SubsystemBase {
   private final SwerveDriveOdometry odometry;
   private SwerveModulePosition[] lastOdometryPositions;
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
-  private int telemetryCycles;
+  private int telemetryCycleCount;
+  /**Odometry waits for valid sensors, then rebases instead of integrating a bad position jump.
+   *Make sure robot dont do big jump
+   * */
   private boolean odometryInitialized;
   private boolean odometryNeedsRebase;
+  // Applied after resetHeading() so the estimated pose keeps its location but resets rotation.
   private boolean headingResetPending;
   private boolean previousModulesReady = true;
 
@@ -39,7 +42,9 @@ public class Swerve extends SubsystemBase {
     Constants.ModuleConfiguration[] configurations = moduleConfigurations();
     hardwareEnabled = hasValidCanIds(configurations);
     if (!hardwareEnabled) {
-      DriverStation.reportError("Swerve outputs disabled: CAN IDs are missing or outside the valid Phoenix range.", false);
+      DriverStation.reportError(
+          "Swerve outputs disabled: module CAN IDs are missing or outside the valid Phoenix range.",
+          false);
     }
     modules = new SwerveModule[] {
       new SwerveModule("FrontLeft", configurations[0], hardwareEnabled),
@@ -48,14 +53,28 @@ public class Swerve extends SubsystemBase {
       new SwerveModule("RearRight", configurations[3], hardwareEnabled)
     };
     lastOdometryPositions = getPositions();
-    odometry = new SwerveDriveOdometry(kinematics, getHeading(), getPositions());
+    odometry = new SwerveDriveOdometry(KINEMATICS, getHeading(), getPositions());
   }
 
+  /** Converts chassis motion into front-left, front-right, rear-left, rear-right wheel states. */
+  static SwerveModuleState[] calculateModuleStates(ChassisSpeeds speeds) {
+    return KINEMATICS.toSwerveModuleStates(speeds);
+  }
+
+  /** Module order here must match the order used by the modules array below. */
+  private static SwerveDriveKinematics createKinematics() {
+    double halfWheelBase = Constants.SwerveConstants.kWheelBaseMeters / 2.0;
+    double halfTrackWidth = Constants.SwerveConstants.kTrackWidthMeters / 2.0;
+    return new SwerveDriveKinematics(
+        new Translation2d(halfWheelBase, halfTrackWidth),
+        new Translation2d(halfWheelBase, -halfTrackWidth),
+        new Translation2d(-halfWheelBase, halfTrackWidth),
+        new Translation2d(-halfWheelBase, -halfTrackWidth));
+  }
+
+  /** Applies chassis speeds expressed in the robot's coordinate frame. */
   public void drive(ChassisSpeeds robotRelativeSpeeds) {
-    if (!areModulesReady() || robotRelativeSpeeds == null || !validGeometry()
-        || !Double.isFinite(robotRelativeSpeeds.vxMetersPerSecond)
-        || !Double.isFinite(robotRelativeSpeeds.vyMetersPerSecond)
-        || !Double.isFinite(robotRelativeSpeeds.omegaRadiansPerSecond)) {
+    if (!areModulesReady() || !validGeometry() || !hasFiniteSpeeds(robotRelativeSpeeds)) {
       stop();
       reportModuleHealth();
       return;
@@ -65,14 +84,15 @@ public class Swerve extends SubsystemBase {
       return;
     }
     commandedSpeeds = robotRelativeSpeeds;
-    SwerveModuleState[] targetStates = kinematics.toSwerveModuleStates(robotRelativeSpeeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(targetStates, Constants.SwerveConstants.kMaxSpeedMetersPerSecond);
+    SwerveModuleState[] targetStates = calculateModuleStates(robotRelativeSpeeds);
+    SwerveDriveKinematics.desaturateWheelSpeeds(
+        targetStates, Constants.SwerveConstants.kMaxSpeedMetersPerSecond);
     for (int index = 0; index < modules.length; index++) {
       modules[index].setState(targetStates[index]);
     }
   }
 
-  /** Drives using field relative translation and the current Pigeon 2 headings */
+  /** Converts field-relative speeds using the gyro, then sends them to the modules. */
   public void driveFieldRelative(ChassisSpeeds fieldRelativeSpeeds) {
     ChassisSpeeds robotRelativeSpeeds = toRobotRelativeSpeeds(fieldRelativeSpeeds, getValidHeading());
     if (robotRelativeSpeeds == null) {
@@ -82,7 +102,7 @@ public class Swerve extends SubsystemBase {
     drive(robotRelativeSpeeds);
   }
 
-  /** Returns the counter clockwise-positive robot heading (Pigeon 2) */
+  /** Returns the counter-clockwise-positive gyro heading; returns zero if the gyro is unavailable. */
   public Rotation2d getHeading() {
     Rotation2d heading = getValidHeading();
     return heading == null ? new Rotation2d() : heading;
@@ -111,7 +131,7 @@ public class Swerve extends SubsystemBase {
         heading);
   }
 
-  /** Set the current physical robot direction as the zero degree field heading */
+  /** Sets the robot's current direction as zero degrees for field-relative driving. */
   public void resetHeading() {
     gyro.reset();
     headingResetPending = true;
@@ -138,6 +158,7 @@ public class Swerve extends SubsystemBase {
     return odometry.getPoseMeters();
   }
 
+  /** Resets odometry only when the requested pose and sensor readings are valid. */
   public void resetPose(Pose2d pose) {
     Rotation2d heading = getValidHeading();
     if (pose != null && heading != null && hasValidModulePositions()) {
@@ -191,16 +212,31 @@ public class Swerve extends SubsystemBase {
   }
 
   private boolean validGeometry() {
-    return Constants.SwerveConstants.kWheelBaseMeters > 0.0
-        && Constants.SwerveConstants.kTrackWidthMeters > 0.0
-        && Constants.SwerveConstants.kMaxSpeedMetersPerSecond > 0.0
-        && Double.isFinite(Constants.SwerveConstants.kWheelBaseMeters)
-        && Double.isFinite(Constants.SwerveConstants.kTrackWidthMeters)
-        && Double.isFinite(Constants.SwerveConstants.kMaxSpeedMetersPerSecond);
+    return isPositiveFinite(Constants.SwerveConstants.kWheelBaseMeters)
+        && isPositiveFinite(Constants.SwerveConstants.kTrackWidthMeters)
+        && isPositiveFinite(Constants.SwerveConstants.kMaxSpeedMetersPerSecond);
+  }
+
+  private static boolean hasFiniteSpeeds(ChassisSpeeds speeds) {
+    return speeds != null
+        && Double.isFinite(speeds.vxMetersPerSecond)
+        && Double.isFinite(speeds.vyMetersPerSecond)
+        && Double.isFinite(speeds.omegaRadiansPerSecond);
+  }
+
+  private static boolean isPositiveFinite(double value) {
+    return value > 0.0 && Double.isFinite(value);
   }
 
   @Override
   public void periodic() {
+    updateOdometry();
+    reportModuleHealth();
+    publishTelemetry();
+  }
+
+  /** Updates pose from the gyro and encoder deltas, holding bad samples until sensors recover. */
+  private void updateOdometry() {
     Rotation2d heading = getValidHeading();
     if (heading == null) {
       odometryInitialized = false;
@@ -240,9 +276,12 @@ public class Swerve extends SubsystemBase {
         }
       }
     }
-    reportModuleHealth();
-    telemetryCycles++;
-    if (telemetryCycles % 5 != 0) {
+  }
+
+  /** Publishes dashboard values every fifth scheduler cycle to limit network traffic. */
+  private void publishTelemetry() {
+    telemetryCycleCount++;
+    if (telemetryCycleCount % 5 != 0) {
       return;
     }
     SmartDashboard.putNumber("Swerve/CommandedVxMetersPerSecond", commandedSpeeds.vxMetersPerSecond);
@@ -269,7 +308,8 @@ public class Swerve extends SubsystemBase {
         return false;
       }
     }
-    return true;
+    int pigeonCanId = Constants.SwerveConstants.kPigeonCanId;
+    return pigeonCanId >= 0 && pigeonCanId <= 62;
   }
 
   static boolean isZeroCommand(ChassisSpeeds speeds) {
@@ -278,6 +318,7 @@ public class Swerve extends SubsystemBase {
         && speeds.omegaRadiansPerSecond == 0.0;
   }
 
+  /** Reuses the last trusted encoder position when a current sensor sample is invalid. */
   static SwerveModulePosition[] holdLastValidPositions(
       SwerveModulePosition[] currentPositions, SwerveModulePosition[] lastPositions) {
     SwerveModulePosition[] positions = new SwerveModulePosition[currentPositions.length];

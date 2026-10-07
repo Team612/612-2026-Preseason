@@ -4,16 +4,15 @@
 
 package frc.robot.commands;
 
-import frc.robot.subsystems.ExampleSubsystem;
 import edu.wpi.first.wpilibj2.command.Command;
+import frc.robot.subsystems.ExampleSubsystem;
 
+/** Factories for autonomous commands. Add completed routines here as they are implemented. */
 public final class Autos {
-  /** Example static factory for an autonomous command. */
+  /** Demonstrates returning a command supplied by a subsystem. */
   public static Command exampleAuto(ExampleSubsystem subsystem) {
     return subsystem.exampleMethodCommand();
   }
 
-  private Autos() {
-    throw new UnsupportedOperationException("This is a utility class!");
-  }
+  private Autos() {}
 }

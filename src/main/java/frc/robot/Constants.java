@@ -42,6 +42,9 @@ public final class Constants {
   public static final class OperatorConstants {
     public static final int kDriverControllerPort = Constants.kDriverControllerPort;
     public static final double kDeadband = DEADBAND;
+    public static final double kForwardSpeedScale = xPercent;
+    public static final double kStrafeSpeedScale = yPercent;
+    public static final double kRotationSpeedScale = zPercent;
 
     private OperatorConstants() {}
   }

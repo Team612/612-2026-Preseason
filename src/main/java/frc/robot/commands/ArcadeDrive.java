@@ -1,15 +1,19 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
 import frc.robot.subsystems.Swerve;
 
+/** Converts Xbox stick input into field-relative or robot-relative swerve commands. */
 public class ArcadeDrive extends Command {
   private final Swerve swerve;
   private final CommandXboxController controller;
+  private boolean fieldRelativeMode;
 
   public ArcadeDrive(Swerve swerve, CommandXboxController controller) {
     this.swerve = swerve;
@@ -24,32 +28,67 @@ public class ArcadeDrive extends Command {
 
   @Override
   public void execute() {
-    double forward = MathUtil.applyDeadband(-controller.getLeftY(), Constants.DEADBAND);
-    double strafe = MathUtil.applyDeadband(-controller.getLeftX(), Constants.DEADBAND);
-    double rotation = MathUtil.applyDeadband(-controller.getRightX(), Constants.DEADBAND);
-    if (forward == 0.0 && strafe == 0.0 && rotation == 0.0) {
+    SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
+    Translation2d translationInput =
+        applyTranslationDeadband(
+            -controller.getLeftY(),
+            -controller.getLeftX(),
+            Constants.OperatorConstants.kDeadband);
+    double forwardInput = translationInput.getX();
+    double strafeInput = translationInput.getY();
+    double rotationInput =
+        MathUtil.applyDeadband(-controller.getRightX(), Constants.OperatorConstants.kDeadband);
+
+    if (forwardInput == 0.0 && strafeInput == 0.0 && rotationInput == 0.0) {
       swerve.stop();
       return;
     }
 
-    double linearMagnitude = Math.hypot(forward, strafe);
-    double linearScale = linearMagnitude > 1.0 ? 1.0 / linearMagnitude : 1.0;
-    double normalizedForward = forward * linearScale;
-    double normalizedStrafe = strafe * linearScale;
-
     ChassisSpeeds requestedSpeeds =
-        new ChassisSpeeds(
-            normalizedForward * Constants.xPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
-            normalizedStrafe * Constants.yPercent * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
-            rotation
-                * Constants.zPercent
-                * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
+        toChassisSpeeds(forwardInput, strafeInput, rotationInput);
 
-    if (controller.rightBumper().getAsBoolean()) {
-      swerve.drive(requestedSpeeds);
-    } else {
+    if (fieldRelativeMode) {
       swerve.driveFieldRelative(requestedSpeeds);
+    } else {
+      swerve.drive(requestedSpeeds);
     }
+  }
+
+  /** Switches between field-relative and robot-relative control. */
+  public void toggleDriveMode() {
+    fieldRelativeMode = toggledMode(fieldRelativeMode);
+  }
+
+  static boolean toggledMode(boolean currentlyFieldRelative) {
+    return !currentlyFieldRelative;
+  }
+
+  /** Deadbands each left-stick axis independently, then caps diagonal magnitude at one. */
+  static Translation2d applyTranslationDeadband(
+      double forwardInput, double strafeInput, double deadband) {
+    double forward = MathUtil.applyDeadband(forwardInput, deadband);
+    double strafe = MathUtil.applyDeadband(strafeInput, deadband);
+    double magnitude = Math.hypot(forward, strafe);
+    if (magnitude > 1.0) {
+      forward /= magnitude;
+      strafe /= magnitude;
+    }
+    return new Translation2d(forward, strafe);
+  }
+
+  /** Maps normalized stick axes to chassis velocities in meters per second and radians per second. */
+  static ChassisSpeeds toChassisSpeeds(
+      double forwardInput, double strafeInput, double rotationInput) {
+    return new ChassisSpeeds(
+        forwardInput
+            * Constants.OperatorConstants.kForwardSpeedScale
+            * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
+        strafeInput
+            * Constants.OperatorConstants.kStrafeSpeedScale
+            * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
+        rotationInput
+            * Constants.OperatorConstants.kRotationSpeedScale
+            * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
   }
 
   @Override
