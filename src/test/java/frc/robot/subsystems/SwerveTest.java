@@ -101,8 +101,7 @@ class SwerveTest {
         new SwerveModuleState(1.0, Rotation2d.fromDegrees(170.0));
 
     SwerveModuleState optimized =
-        SwerveModule.alignToMeasuredAngle(
-            requested, Rotation2d.fromDegrees(0.0), true);
+        SwerveModule.alignToMeasuredAngle(requested, Rotation2d.fromDegrees(0.0));
 
     assertEquals(-Math.cos(Math.toRadians(10.0)), optimized.speedMetersPerSecond, 1e-9);
     assertEquals(-10.0, optimized.angle.getDegrees(), 1e-9);
@@ -114,30 +113,25 @@ class SwerveTest {
         new SwerveModuleState(1.0, Rotation2d.fromDegrees(45.0));
 
     SwerveModuleState optimized =
-        SwerveModule.alignToMeasuredAngle(
-            requested, Rotation2d.fromDegrees(0.0), false);
+        SwerveModule.alignToMeasuredAngle(requested, Rotation2d.fromDegrees(0.0));
 
     assertEquals(Math.cos(Math.toRadians(45.0)), optimized.speedMetersPerSecond, 1e-9);
     assertEquals(45.0, optimized.angle.getDegrees(), 1e-9);
   }
 
   @Test
-  void optimizationHysteresisPreventsFlippingNearNinetyDegrees() {
-    Rotation2d measuredAngle = new Rotation2d();
-    SwerveModuleState nearFlip =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(92.0));
-    SwerveModuleState pastFlipThreshold =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(96.0));
+  void optimizationUsesShortestTurnAcrossNinetyDegreeBoundary() {
+    SwerveModuleState belowBoundary =
+        SwerveModule.alignToMeasuredAngle(
+            new SwerveModuleState(1.0, Rotation2d.fromDegrees(89.0)), new Rotation2d());
+    SwerveModuleState aboveBoundary =
+        SwerveModule.alignToMeasuredAngle(
+            new SwerveModuleState(1.0, Rotation2d.fromDegrees(91.0)), new Rotation2d());
 
-    assertFalse(SwerveModule.shouldReverseOptimization(nearFlip, measuredAngle, false));
-    assertTrue(
-        SwerveModule.shouldReverseOptimization(pastFlipThreshold, measuredAngle, false));
-    assertTrue(SwerveModule.shouldReverseOptimization(nearFlip, measuredAngle, true));
-    assertFalse(
-        SwerveModule.shouldReverseOptimization(
-            new SwerveModuleState(1.0, Rotation2d.fromDegrees(84.0)),
-            measuredAngle,
-            true));
+    assertEquals(89.0, belowBoundary.angle.getDegrees(), 1e-9);
+    assertEquals(Math.cos(Math.toRadians(89.0)), belowBoundary.speedMetersPerSecond, 1e-9);
+    assertEquals(-89.0, aboveBoundary.angle.getDegrees(), 1e-9);
+    assertEquals(-Math.cos(Math.toRadians(89.0)), aboveBoundary.speedMetersPerSecond, 1e-9);
   }
 
   @Test

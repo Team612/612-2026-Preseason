@@ -34,7 +34,6 @@ public class SwerveModule {
       new TrapezoidProfile.Constraints(Constants.SwerveConstants.kMaxTurnRadPerSec,
           Constants.SwerveConstants.kMaxTurnAccelRadPerSecSquared));
   private Rotation2d lastTargetAngle = new Rotation2d();
-  private boolean turnOptimizationReversed;
   private boolean turnControllerInitialized;
   private double targetSpeedMetersPerSecond;
   private double driveSpeedScale;
@@ -121,50 +120,25 @@ public class SwerveModule {
     initializeTurnController(angle);
 
     if (isBelowMinimumModuleSpeed(targetState.speedMetersPerSecond)) {
-      turnOptimizationReversed = false;
       stop();
       return;
     }
 
-    turnOptimizationReversed =
-        shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
-    SwerveModuleState moduleState =
-        alignToMeasuredAngle(targetState, angle, turnOptimizationReversed);
+    SwerveModuleState moduleState = alignToMeasuredAngle(targetState, angle);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
     lastTargetAngle = moduleState.angle;
     commandTurn(angle, moduleState.angle);
     commandDrive(moduleState.speedMetersPerSecond);
   }
 
-  /** Uses a hysteretic shortest-turn optimization and WPILib cosine compensation. */
+  /** Applies WPILib's shortest-turn optimization and cosine compensation. */
   static SwerveModuleState alignToMeasuredAngle(
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
-    return alignToMeasuredAngle(requestedState, measuredAngle, false);
-  }
-
-  static SwerveModuleState alignToMeasuredAngle(
-      SwerveModuleState requestedState,
-      Rotation2d measuredAngle,
-      boolean optimizationReversed) {
     SwerveModuleState optimizedState =
         new SwerveModuleState(requestedState.speedMetersPerSecond, requestedState.angle);
-    if (optimizationReversed) {
-      optimizedState.speedMetersPerSecond *= -1.0;
-      optimizedState.angle = optimizedState.angle.rotateBy(Rotation2d.kPi);
-    }
+    optimizedState.optimize(measuredAngle);
     optimizedState.cosineScale(measuredAngle);
     return optimizedState;
-  }
-
-  static boolean shouldReverseOptimization(
-      SwerveModuleState requestedState,
-      Rotation2d measuredAngle,
-      boolean currentlyReversed) {
-    double angleError = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
-    double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
-    double threshold =
-        currentlyReversed ? Math.PI / 2.0 - hysteresis : Math.PI / 2.0 + hysteresis;
-    return angleError > threshold;
   }
 
   static boolean isBelowMinimumModuleSpeed(double speedMetersPerSecond) {

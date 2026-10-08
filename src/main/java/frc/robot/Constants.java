@@ -64,11 +64,9 @@ public final class Constants {
     public static final double kDriveP = 1.0;
     public static final double kMaxPVolts = 0.5;
     public static final boolean kEnableDriveVelocityCorrection = true;
-    public static final double kTurnP = 4.0;
+    public static final double kTurnP = 0.5;
     public static final double kTurnI = 0.0;
     public static final double kTurnD = 0.0;
-    // Keeps small angle changes near 90 degrees from repeatedly flipping the optimized target.
-    public static final double kTurnOptimizationHysteresisRad = Math.toRadians(5.0);
     public static final double kMaxTurnRadPerSec = Math.PI * 2.0;
     public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
     public static final double kMaxTurnVolts = 4.0;
