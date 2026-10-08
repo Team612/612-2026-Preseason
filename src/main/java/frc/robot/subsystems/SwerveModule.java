@@ -116,8 +116,16 @@ public class SwerveModule {
       return;
     }
     initializeTurnController(angle);
-    turnOptimizationReversed =
-        shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
+
+    // A stale reverse-optimization flag can keep a module flipping between +/- 180-degree
+    // wheel directions even when the target is effectively stopped or only lightly steering.
+    if (Math.abs(targetState.speedMetersPerSecond) <= 1.0e-9) {
+      turnOptimizationReversed = false;
+    } else {
+      turnOptimizationReversed =
+          shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
+    }
+
     SwerveModuleState moduleState =
         alignToMeasuredAngle(targetState, angle, turnOptimizationReversed);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
@@ -308,9 +316,13 @@ public class SwerveModule {
     if (driveMotor != null) {
       driveMotor.setControl(driveVoltageRequest.withOutput(0.0));
     }
-    if (angle != null && turnMotor != null && validTurnLimit()) {
-      initializeTurnController(angle);
-      commandTurn(angle, lastTargetAngle);
+    if (angle != null) {
+      lastTargetAngle = angle;
+      turnController.reset(angle.getRadians());
+    }
+    if (turnMotor != null && validTurnLimit()) {
+      turnVolts = 0.0;
+      turnMotor.setControl(turnVoltageRequest.withOutput(0.0));
     } else {
       turnVolts = 0.0;
       if (turnMotor != null) {
