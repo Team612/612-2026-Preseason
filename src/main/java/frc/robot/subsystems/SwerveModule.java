@@ -13,6 +13,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
 
@@ -23,7 +24,8 @@ public class SwerveModule {
   private final TalonFX driveMotor;
   private final TalonFX turnMotor;
   private final CANcoder encoder;
-  private final boolean configurationSuccessful;
+  private boolean configurationSuccessful;
+  private double nextConfigurationRetrySeconds;
   private final VoltageOut driveVoltageRequest = new VoltageOut(0.0);
   private final VoltageOut turnVoltageRequest = new VoltageOut(0.0);
   private final ProfiledPIDController turnController = new ProfiledPIDController(
@@ -52,6 +54,7 @@ public class SwerveModule {
       turnMotor = new TalonFX(configuration.turnCanId(), Constants.SwerveConstants.kCanBus);
       encoder = new CANcoder(configuration.encoderCanId(), Constants.SwerveConstants.kCanBus);
       configurationSuccessful = configureMotors();
+      nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
     } else {
       driveMotor = null;
       turnMotor = null;
@@ -172,16 +175,10 @@ public class SwerveModule {
       Rotation2d measuredAngle,
       boolean currentlyReversed) {
     double angleError = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
-    return angleError > Math.PI / 2.0;
-  }
-
-  /**
-   * Slows the wheel while it turns toward the requested angle. State optimization should run first
-   * so the steering controller always takes the shorter path.
-   */
-  static SwerveModuleState applySteeringAlignmentScale(
-      SwerveModuleState requestedState, Rotation2d measuredAngle) {
-    return requestedState;
+    double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
+    double flipThreshold =
+        currentlyReversed ? Math.PI / 2.0 - hysteresis : Math.PI / 2.0 + hysteresis;
+    return angleError > flipThreshold;
   }
 
   private void commandTurn(Rotation2d angle, Rotation2d targetAngle) {
@@ -295,6 +292,11 @@ public class SwerveModule {
   }
 
   public boolean isReady() {
+    if (!configurationSuccessful && driveMotor != null && turnMotor != null
+        && Timer.getFPGATimestamp() >= nextConfigurationRetrySeconds) {
+      configurationSuccessful = configureMotors();
+      nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
+    }
     return configurationSuccessful
         && getAngle() != null;
   }

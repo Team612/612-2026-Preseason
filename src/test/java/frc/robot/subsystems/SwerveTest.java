@@ -91,20 +91,27 @@ class SwerveTest {
   }
 
   @Test
-  void optimizationFlipsOncePastNinetyDegrees() {
+  void optimizationHysteresisPreventsTargetFlipsNearNinetyDegrees() {
     Rotation2d measuredAngle = new Rotation2d();
-    SwerveModuleState justBelowFlip =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(89.0));
-    SwerveModuleState pastFlip =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(91.0));
+    SwerveModuleState nearFlip =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(92.0));
+    SwerveModuleState pastFlipThreshold =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(96.0));
 
-    assertFalse(SwerveModule.shouldReverseOptimization(justBelowFlip, measuredAngle, false));
-    assertTrue(SwerveModule.shouldReverseOptimization(pastFlip, measuredAngle, false));
+    assertFalse(SwerveModule.shouldReverseOptimization(nearFlip, measuredAngle, false));
+    assertTrue(
+        SwerveModule.shouldReverseOptimization(pastFlipThreshold, measuredAngle, false));
+    assertTrue(SwerveModule.shouldReverseOptimization(nearFlip, measuredAngle, true));
+    assertFalse(
+        SwerveModule.shouldReverseOptimization(
+            new SwerveModuleState(1.0, Rotation2d.fromDegrees(84.0)),
+            measuredAngle,
+            true));
 
     SwerveModuleState heldRepresentation =
-        SwerveModule.optimizeState(pastFlip, measuredAngle, true);
+        SwerveModule.optimizeState(nearFlip, measuredAngle, true);
     assertEquals(-1.0, heldRepresentation.speedMetersPerSecond, 1e-9);
-    assertEquals(-89.0, heldRepresentation.angle.getDegrees(), 1e-9);
+    assertEquals(-88.0, heldRepresentation.angle.getDegrees(), 1e-9);
   }
 
   @Test
