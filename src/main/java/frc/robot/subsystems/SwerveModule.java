@@ -32,6 +32,7 @@ public class SwerveModule {
       new TrapezoidProfile.Constraints(Constants.SwerveConstants.kMaxTurnRadPerSec,
           Constants.SwerveConstants.kMaxTurnAccelRadPerSecSquared));
   private Rotation2d lastTargetAngle = new Rotation2d();
+  private boolean turnOptimizationReversed;
   private boolean turnControllerInitialized;
   private double targetSpeedMetersPerSecond;
   private double driveSpeedScale;
@@ -110,33 +111,64 @@ public class SwerveModule {
       return;
     }
     Rotation2d angle = getAngle();
-    if (angle == null || !validDriveLimits() || !validTurnLimit() || !validLowSpeedThreshold()) {
+    if (angle == null || !validDriveLimits() || !validTurnLimit()) {
       stop();
       return;
     }
     initializeTurnController(angle);
-    if (Math.abs(targetState.speedMetersPerSecond) < Constants.SwerveConstants.kLowSpeedThresholdMetersPerSecond) {
-      stop();
-      return;
-    }
-    SwerveModuleState optimizedState = optimizeState(targetState, angle);
-    SwerveModuleState moduleState = applySteeringAlignmentScale(optimizedState, angle);
+    turnOptimizationReversed =
+        shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
+    SwerveModuleState moduleState =
+        alignToMeasuredAngle(targetState, angle, turnOptimizationReversed);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
     lastTargetAngle = moduleState.angle;
     commandTurn(angle, moduleState.angle);
     commandDrive(moduleState.speedMetersPerSecond);
   }
 
+  /** Optimizes the wheel direction and slows drive while the steering angle is catching up. */
+  static SwerveModuleState alignToMeasuredAngle(
+      SwerveModuleState requestedState, Rotation2d measuredAngle) {
+    return alignToMeasuredAngle(requestedState, measuredAngle, false);
+  }
+
+  static SwerveModuleState alignToMeasuredAngle(
+      SwerveModuleState requestedState,
+      Rotation2d measuredAngle,
+      boolean optimizationReversed) {
+    SwerveModuleState optimizedState =
+        optimizeState(requestedState, measuredAngle, optimizationReversed);
+    return applySteeringAlignmentScale(optimizedState, measuredAngle);
+  }
+
   /** Chooses the equivalent wheel direction that requires no more than 90 degrees of steering. */
   static SwerveModuleState optimizeState(
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
     double angleError = requestedState.angle.minus(measuredAngle).getRadians();
-    if (Math.abs(angleError) > Math.PI / 2.0) {
+    return optimizeState(requestedState, measuredAngle, Math.abs(angleError) > Math.PI / 2.0);
+  }
+
+  static SwerveModuleState optimizeState(
+      SwerveModuleState requestedState,
+      Rotation2d measuredAngle,
+      boolean optimizationReversed) {
+    if (optimizationReversed) {
       Rotation2d reversedAngle = requestedState.angle.rotateBy(Rotation2d.fromRadians(Math.PI));
       return new SwerveModuleState(-requestedState.speedMetersPerSecond, reversedAngle);
     }
     return new SwerveModuleState(
         requestedState.speedMetersPerSecond, requestedState.angle);
+  }
+
+  static boolean shouldReverseOptimization(
+      SwerveModuleState requestedState,
+      Rotation2d measuredAngle,
+      boolean currentlyReversed) {
+    double angleError = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
+    double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
+    double flipThreshold =
+        currentlyReversed ? Math.PI / 2.0 - hysteresis : Math.PI / 2.0 + hysteresis;
+    return angleError > flipThreshold;
   }
 
   /**
@@ -180,14 +212,6 @@ public class SwerveModule {
 
   private void commandDrive(double targetSpeed) {
     // Convert wheel speed to open-loop voltage, then add a small measured-speed correction.
-    if (Math.abs(targetSpeed) < Constants.SwerveConstants.kLowSpeedThresholdMetersPerSecond) {
-      driveSpeedScale = 0.0;
-      driveBaseVolts = 0.0;
-      driveCorrectionVolts = 0.0;
-      driveVolts = 0.0;
-      driveMotor.setControl(driveVoltageRequest.withOutput(0.0));
-      return;
-    }
     driveSpeedScale =
         MathUtil.clamp(
             targetSpeed / Constants.SwerveConstants.kMaxSpeedMetersPerSecond, -1.0, 1.0);
@@ -382,11 +406,6 @@ public class SwerveModule {
 
   private boolean validTurnLimit() {
     return isPositiveFinite(Constants.SwerveConstants.kMaxTurnVolts);
-  }
-
-  private boolean validLowSpeedThreshold() {
-    return Constants.SwerveConstants.kLowSpeedThresholdMetersPerSecond >= 0.0
-        && Double.isFinite(Constants.SwerveConstants.kLowSpeedThresholdMetersPerSecond);
   }
 
   private double wheelCircumferenceMeters() {

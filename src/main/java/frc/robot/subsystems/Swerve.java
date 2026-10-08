@@ -40,10 +40,10 @@ public class Swerve extends SubsystemBase {
 
   public Swerve() {
     Constants.ModuleConfiguration[] configurations = moduleConfigurations();
-    hardwareEnabled = hasValidCanIds(configurations);
+    hardwareEnabled = haveValidCanRanges(configurations);
     if (!hardwareEnabled) {
       DriverStation.reportError(
-          "Swerve outputs disabled: module CAN IDs are missing or outside the valid Phoenix range.",
+          "Swerve outputs disabled: module CAN IDs must be configured in the Phoenix range (0 to 62).",
           false);
     }
     modules = new SwerveModule[] {
@@ -56,12 +56,12 @@ public class Swerve extends SubsystemBase {
     odometry = new SwerveDriveOdometry(KINEMATICS, getHeading(), getPositions());
   }
 
-  /** Converts chassis motion into front-left, front-right, rear-left, rear-right wheel states. */
+  /** Converts chassis motion into front left, front right, rear left, rear right wheel states. */
   static SwerveModuleState[] calculateModuleStates(ChassisSpeeds speeds) {
     return KINEMATICS.toSwerveModuleStates(speeds);
   }
 
-  /** Module order here must match the order used by the modules array below. */
+  /** Module order here must match the order used by the modules array below. this was messed up*/
   private static SwerveDriveKinematics createKinematics() {
     double halfWheelBase = Constants.SwerveConstants.kWheelBaseMeters / 2.0;
     double halfTrackWidth = Constants.SwerveConstants.kTrackWidthMeters / 2.0;
@@ -72,7 +72,7 @@ public class Swerve extends SubsystemBase {
         new Translation2d(-halfWheelBase, -halfTrackWidth));
   }
 
-  /** Applies chassis speeds expressed in the robot's coordinate frame. */
+
   public void drive(ChassisSpeeds robotRelativeSpeeds) {
     if (!areModulesReady() || !validGeometry() || !hasFiniteSpeeds(robotRelativeSpeeds)) {
       stop();
@@ -281,7 +281,7 @@ public class Swerve extends SubsystemBase {
     }
   }
 
-  /** Publishes dashboard values every fifth scheduler cycle to limit network traffic. */
+  // delay the cycles
   private void publishTelemetry() {
     telemetryCycleCount++;
     if (telemetryCycleCount % 5 != 0) {
@@ -302,12 +302,11 @@ public class Swerve extends SubsystemBase {
     }
   }
 
-  static boolean hasValidCanIds(Constants.ModuleConfiguration[] configurations) {
+  static boolean haveValidCanRanges(Constants.ModuleConfiguration[] configurations) {
     if (configurations == null || configurations.length != 4) {
       return false;
     }
-    int pigeonCanId = Constants.SwerveConstants.kPigeonCanId;
-    if (!isValidCanId(pigeonCanId)) {
+    if (!isValidCanId(Constants.SwerveConstants.kPigeonCanId)) {
       return false;
     }
     for (Constants.ModuleConfiguration configuration : configurations) {
@@ -328,7 +327,7 @@ public class Swerve extends SubsystemBase {
         && speeds.omegaRadiansPerSecond == 0.0;
   }
 
-  /** Reuses the last trusted encoder position when a current sensor sample is invalid. */
+  /** Reuses the last trusted encoder position when a current sensor sample is invalid. muy importante for the jumps */
   static SwerveModulePosition[] holdLastValidPositions(
       SwerveModulePosition[] currentPositions, SwerveModulePosition[] lastPositions) {
     SwerveModulePosition[] positions = new SwerveModulePosition[currentPositions.length];

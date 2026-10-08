@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 
 class SwerveTest {
   @Test
-  void currentCanMapPassesCanIdRangeValidation() {
-    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+  void currentCanMapPassesCanRangeValidationEvenThoughIdsAreDuplicated() {
+    assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
       Constants.SwerveConstants.kRearLeft,
@@ -24,8 +24,8 @@ class SwerveTest {
   }
 
   @Test
-  void duplicateCanIdsAreNotValidatedHere() {
-    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+  void duplicateCanIdsAcrossDevicesAreNotBlockedBySoftwareValidation() {
+    assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
@@ -34,8 +34,8 @@ class SwerveTest {
   }
 
   @Test
-  void pigeonCanIdOverlapIsNotValidatedHere() {
-    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+  void pigeonCanIdOverlapIsNotBlockedBySoftwareValidation() {
+    assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(0, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
@@ -91,10 +91,46 @@ class SwerveTest {
   }
 
   @Test
+  void optimizationHysteresisPreventsTargetFlipsFromSmallChangesAroundNinetyDegrees() {
+    Rotation2d measuredAngle = new Rotation2d();
+    SwerveModuleState justBelowFlip =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(92.0));
+    SwerveModuleState pastFlip =
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(97.0));
+
+    assertFalse(SwerveModule.shouldReverseOptimization(justBelowFlip, measuredAngle, false));
+    assertTrue(SwerveModule.shouldReverseOptimization(pastFlip, measuredAngle, false));
+    assertTrue(SwerveModule.shouldReverseOptimization(justBelowFlip, measuredAngle, true));
+    assertFalse(
+        SwerveModule.shouldReverseOptimization(
+            new SwerveModuleState(1.0, Rotation2d.fromDegrees(84.0)),
+            measuredAngle,
+            true));
+
+    SwerveModuleState heldRepresentation =
+        SwerveModule.optimizeState(justBelowFlip, measuredAngle, true);
+    assertEquals(-1.0, heldRepresentation.speedMetersPerSecond, 1e-9);
+    assertEquals(-88.0, heldRepresentation.angle.getDegrees(), 1e-9);
+  }
+
+  @Test
+  void lowSpeedModuleRequestStillUpdatesTheSteeringTarget() {
+    SwerveModuleState requested =
+        new SwerveModuleState(0.03, Rotation2d.fromDegrees(45.0));
+
+    SwerveModuleState aligned =
+        SwerveModule.alignToMeasuredAngle(requested, new Rotation2d());
+
+    assertEquals(45.0, aligned.angle.getDegrees(), 1e-9);
+    assertEquals(0.03 * Math.cos(Math.toRadians(45.0)),
+        aligned.speedMetersPerSecond, 1e-9);
+  }
+
+  @Test
   void incompleteCanMapsAreRejected() {
-    assertFalse(Swerve.hasValidCanIds(null));
-    assertFalse(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[3]));
-    assertFalse(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+    assertFalse(Swerve.haveValidCanRanges(null));
+    assertFalse(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[3]));
+    assertFalse(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       null,
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
@@ -104,7 +140,7 @@ class SwerveTest {
 
   @Test
   void validCanMapIsAccepted() {
-    assertTrue(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+    assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
@@ -114,7 +150,7 @@ class SwerveTest {
 
   @Test
   void canIdsOutsidePhoenixRangeAreRejected() {
-    assertFalse(Swerve.hasValidCanIds(new Constants.ModuleConfiguration[] {
+    assertFalse(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
       new Constants.ModuleConfiguration(7, 8, 9, 0.0, false, false),
