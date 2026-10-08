@@ -306,19 +306,12 @@ public class Swerve extends SubsystemBase {
     if (configurations == null || configurations.length != 4) {
       return false;
     }
-    if (!isValidCanId(Constants.SwerveConstants.kPigeonCanId)) {
-      return false;
-    }
     for (Constants.ModuleConfiguration configuration : configurations) {
       if (configuration == null || !configuration.hasConfiguredCanIds()) {
         return false;
       }
     }
     return true;
-  }
-
-  private static boolean isValidCanId(int canId) {
-    return canId >= 0 && canId <= 62;
   }
 
   static boolean isZeroCommand(ChassisSpeeds speeds) {
