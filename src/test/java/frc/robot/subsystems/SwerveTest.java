@@ -91,26 +91,20 @@ class SwerveTest {
   }
 
   @Test
-  void optimizationHysteresisPreventsTargetFlipsFromSmallChangesAroundNinetyDegrees() {
+  void optimizationFlipsOncePastNinetyDegrees() {
     Rotation2d measuredAngle = new Rotation2d();
     SwerveModuleState justBelowFlip =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(92.0));
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(89.0));
     SwerveModuleState pastFlip =
-        new SwerveModuleState(1.0, Rotation2d.fromDegrees(97.0));
+        new SwerveModuleState(1.0, Rotation2d.fromDegrees(91.0));
 
     assertFalse(SwerveModule.shouldReverseOptimization(justBelowFlip, measuredAngle, false));
     assertTrue(SwerveModule.shouldReverseOptimization(pastFlip, measuredAngle, false));
-    assertTrue(SwerveModule.shouldReverseOptimization(justBelowFlip, measuredAngle, true));
-    assertFalse(
-        SwerveModule.shouldReverseOptimization(
-            new SwerveModuleState(1.0, Rotation2d.fromDegrees(84.0)),
-            measuredAngle,
-            true));
 
     SwerveModuleState heldRepresentation =
-        SwerveModule.optimizeState(justBelowFlip, measuredAngle, true);
+        SwerveModule.optimizeState(pastFlip, measuredAngle, true);
     assertEquals(-1.0, heldRepresentation.speedMetersPerSecond, 1e-9);
-    assertEquals(-88.0, heldRepresentation.angle.getDegrees(), 1e-9);
+    assertEquals(-89.0, heldRepresentation.angle.getDegrees(), 1e-9);
   }
 
   @Test
@@ -122,8 +116,19 @@ class SwerveTest {
         SwerveModule.alignToMeasuredAngle(requested, new Rotation2d());
 
     assertEquals(45.0, aligned.angle.getDegrees(), 1e-9);
-    assertEquals(0.03 * Math.cos(Math.toRadians(45.0)),
-        aligned.speedMetersPerSecond, 1e-9);
+    assertEquals(0.03, aligned.speedMetersPerSecond, 1e-9);
+  }
+
+  @Test
+  void zeroSpeedModuleRequestDoesNotReverseTheWheelDirection() {
+    SwerveModuleState requested =
+        new SwerveModuleState(0.0, Rotation2d.fromDegrees(179.0));
+
+    SwerveModuleState aligned =
+        SwerveModule.alignToMeasuredAngle(requested, new Rotation2d());
+
+    assertEquals(0.0, aligned.speedMetersPerSecond, 1e-9);
+    assertEquals(179.0, aligned.angle.getDegrees(), 1e-9);
   }
 
   @Test

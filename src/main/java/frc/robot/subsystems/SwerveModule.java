@@ -117,15 +117,16 @@ public class SwerveModule {
     }
     initializeTurnController(angle);
 
-    // A stale reverse-optimization flag can keep a module flipping between +/- 180-degree
-    // wheel directions even when the target is effectively stopped or only lightly steering.
     if (Math.abs(targetState.speedMetersPerSecond) <= 1.0e-9) {
       turnOptimizationReversed = false;
-    } else {
-      turnOptimizationReversed =
-          shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
+      lastTargetAngle = angle;
+      commandTurn(angle, angle);
+      commandDrive(0.0);
+      return;
     }
 
+    turnOptimizationReversed =
+        shouldReverseOptimization(targetState, angle, turnOptimizationReversed);
     SwerveModuleState moduleState =
         alignToMeasuredAngle(targetState, angle, turnOptimizationReversed);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
@@ -144,9 +145,7 @@ public class SwerveModule {
       SwerveModuleState requestedState,
       Rotation2d measuredAngle,
       boolean optimizationReversed) {
-    SwerveModuleState optimizedState =
-        optimizeState(requestedState, measuredAngle, optimizationReversed);
-    return applySteeringAlignmentScale(optimizedState, measuredAngle);
+    return optimizeState(requestedState, measuredAngle, optimizationReversed);
   }
 
   /** Chooses the equivalent wheel direction that requires no more than 90 degrees of steering. */
@@ -173,10 +172,7 @@ public class SwerveModule {
       Rotation2d measuredAngle,
       boolean currentlyReversed) {
     double angleError = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
-    double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
-    double flipThreshold =
-        currentlyReversed ? Math.PI / 2.0 - hysteresis : Math.PI / 2.0 + hysteresis;
-    return angleError > flipThreshold;
+    return angleError > Math.PI / 2.0;
   }
 
   /**
@@ -185,10 +181,7 @@ public class SwerveModule {
    */
   static SwerveModuleState applySteeringAlignmentScale(
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
-    double angleError = requestedState.angle.minus(measuredAngle).getRadians();
-    double alignmentScale = Math.max(0.0, Math.cos(angleError));
-    return new SwerveModuleState(
-        requestedState.speedMetersPerSecond * alignmentScale, requestedState.angle);
+    return requestedState;
   }
 
   private void commandTurn(Rotation2d angle, Rotation2d targetAngle) {
