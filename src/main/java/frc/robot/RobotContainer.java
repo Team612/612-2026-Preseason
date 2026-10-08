@@ -11,7 +11,13 @@ public class RobotContainer {
   private final Swerve swerve = new Swerve();
   private final CommandXboxController driverController =
       new CommandXboxController(Constants.OperatorConstants.kDriverControllerPort);
-  private final ArcadeDrive arcadeDrive = new ArcadeDrive(swerve, driverController);
+  private final ArcadeDrive arcadeDrive =
+      new ArcadeDrive(
+          swerve,
+          () -> -driverController.getLeftY(),
+          () -> -driverController.getLeftX(),
+          () -> -driverController.getRightX(),
+          () -> driverController.getHID().isConnected());
 
   public RobotContainer() {
     // Drive whenever no oher command currently owns the drivetrain.

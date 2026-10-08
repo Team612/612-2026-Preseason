@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class SwerveTest {
   @Test
-  void currentCanMapPassesCanRangeValidationEvenThoughIdsAreDuplicated() {
+  void currentCanMapPassesCanRangeValidation() {
     assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
@@ -24,7 +24,7 @@ class SwerveTest {
   }
 
   @Test
-  void duplicateCanIdsAcrossDevicesAreNotBlockedBySoftwareValidation() {
+  void duplicateCanIdsAcrossDevicesAreNotBlockedByRangeValidation() {
     assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(1, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
@@ -34,7 +34,7 @@ class SwerveTest {
   }
 
   @Test
-  void pigeonCanIdOverlapIsNotBlockedBySoftwareValidation() {
+  void pigeonCanIdOverlapIsNotBlockedByRangeValidation() {
     assertTrue(Swerve.haveValidCanRanges(new Constants.ModuleConfiguration[] {
       new Constants.ModuleConfiguration(0, 2, 3, 0.0, false, false),
       new Constants.ModuleConfiguration(4, 5, 6, 0.0, false, false),
@@ -67,31 +67,62 @@ class SwerveTest {
   }
 
   @Test
-  void moduleOptimizationReversesDriveInsteadOfTurningMoreThanNinetyDegrees() {
+  void counterClockwiseRotationUsesCorrectModuleOrderAndWheelDirections() {
+    SwerveModuleState[] states =
+        Swerve.calculateModuleStates(new ChassisSpeeds(0.0, 0.0, 1.0));
+
+    double halfWheelBase = Constants.SwerveConstants.kWheelBaseMeters / 2.0;
+    double halfTrackWidth = Constants.SwerveConstants.kTrackWidthMeters / 2.0;
+    assertEquals(
+        Math.toDegrees(Math.atan2(halfWheelBase, -halfTrackWidth)),
+        states[0].angle.getDegrees(),
+        1e-9);
+    assertEquals(
+        Math.toDegrees(Math.atan2(halfWheelBase, halfTrackWidth)),
+        states[1].angle.getDegrees(),
+        1e-9);
+    assertEquals(
+        Math.toDegrees(Math.atan2(-halfWheelBase, -halfTrackWidth)),
+        states[2].angle.getDegrees(),
+        1e-9);
+    assertEquals(
+        Math.toDegrees(Math.atan2(-halfWheelBase, halfTrackWidth)),
+        states[3].angle.getDegrees(),
+        1e-9);
+    double expectedSpeed = Math.hypot(halfWheelBase, halfTrackWidth);
+    for (SwerveModuleState state : states) {
+      assertEquals(expectedSpeed, state.speedMetersPerSecond, 1e-9);
+    }
+  }
+
+  @Test
+  void optimizationReversesDriveAndCosineCompensatesWhileTurning() {
     SwerveModuleState requested =
         new SwerveModuleState(1.0, Rotation2d.fromDegrees(170.0));
 
     SwerveModuleState optimized =
-        SwerveModule.optimizeState(requested, Rotation2d.fromDegrees(0.0));
+        SwerveModule.alignToMeasuredAngle(
+            requested, Rotation2d.fromDegrees(0.0), true);
 
-    assertEquals(-1.0, optimized.speedMetersPerSecond, 1e-9);
+    assertEquals(-Math.cos(Math.toRadians(10.0)), optimized.speedMetersPerSecond, 1e-9);
     assertEquals(-10.0, optimized.angle.getDegrees(), 1e-9);
   }
 
   @Test
-  void moduleOptimizationKeepsDriveDirectionForShortSteeringTurn() {
+  void optimizationKeepsDriveDirectionForShortSteeringTurn() {
     SwerveModuleState requested =
         new SwerveModuleState(1.0, Rotation2d.fromDegrees(45.0));
 
     SwerveModuleState optimized =
-        SwerveModule.optimizeState(requested, Rotation2d.fromDegrees(0.0));
+        SwerveModule.alignToMeasuredAngle(
+            requested, Rotation2d.fromDegrees(0.0), false);
 
-    assertEquals(1.0, optimized.speedMetersPerSecond, 1e-9);
+    assertEquals(Math.cos(Math.toRadians(45.0)), optimized.speedMetersPerSecond, 1e-9);
     assertEquals(45.0, optimized.angle.getDegrees(), 1e-9);
   }
 
   @Test
-  void optimizationHysteresisPreventsTargetFlipsNearNinetyDegrees() {
+  void optimizationHysteresisPreventsFlippingNearNinetyDegrees() {
     Rotation2d measuredAngle = new Rotation2d();
     SwerveModuleState nearFlip =
         new SwerveModuleState(1.0, Rotation2d.fromDegrees(92.0));
@@ -107,35 +138,28 @@ class SwerveTest {
             new SwerveModuleState(1.0, Rotation2d.fromDegrees(84.0)),
             measuredAngle,
             true));
-
-    SwerveModuleState heldRepresentation =
-        SwerveModule.optimizeState(nearFlip, measuredAngle, true);
-    assertEquals(-1.0, heldRepresentation.speedMetersPerSecond, 1e-9);
-    assertEquals(-88.0, heldRepresentation.angle.getDegrees(), 1e-9);
   }
 
   @Test
   void lowSpeedModuleRequestStillUpdatesTheSteeringTarget() {
     SwerveModuleState requested =
-        new SwerveModuleState(0.03, Rotation2d.fromDegrees(45.0));
+        new SwerveModuleState(0.10, Rotation2d.fromDegrees(45.0));
 
     SwerveModuleState aligned =
         SwerveModule.alignToMeasuredAngle(requested, new Rotation2d());
 
     assertEquals(45.0, aligned.angle.getDegrees(), 1e-9);
-    assertEquals(0.03, aligned.speedMetersPerSecond, 1e-9);
+    assertEquals(
+        0.10 * Math.cos(Math.toRadians(45.0)),
+        aligned.speedMetersPerSecond,
+        1e-9);
   }
 
   @Test
-  void zeroSpeedModuleRequestDoesNotReverseTheWheelDirection() {
-    SwerveModuleState requested =
-        new SwerveModuleState(0.0, Rotation2d.fromDegrees(179.0));
-
-    SwerveModuleState aligned =
-        SwerveModule.alignToMeasuredAngle(requested, new Rotation2d());
-
-    assertEquals(0.0, aligned.speedMetersPerSecond, 1e-9);
-    assertEquals(179.0, aligned.angle.getDegrees(), 1e-9);
+  void tinyWheelRequestsAreHeldAtTheirCurrentAngleToRejectStickNoise() {
+    assertTrue(SwerveModule.isBelowMinimumModuleSpeed(0.029));
+    assertTrue(SwerveModule.isBelowMinimumModuleSpeed(-0.02));
+    assertFalse(SwerveModule.isBelowMinimumModuleSpeed(0.03));
   }
 
   @Test

@@ -11,7 +11,7 @@ public final class Constants {
   public static final double xPercent = 1.0;
   public static final double yPercent = 1.0;
   public static final double zPercent = 1.0;
-  public static final double DEADBAND = 0.05;
+  public static final double DEADBAND = 0.10;
   public static final int kDriverControllerPort = 0;
 
   public static final SwerveDriveKinematics swerveKinematics =
@@ -58,6 +58,7 @@ public final class Constants {
     public static final double kWheelDiameterMeters = 0.0889;
     public static final double kDriveReduction = 6.75;
     public static final double kMaxSpeedMetersPerSecond = 2.0;
+    public static final double kMinimumModuleSpeedMetersPerSecond = 0.03;
     public static final double kMaxAngularSpeedRadPerSec = Math.PI * 2.0;
     public static final double kMaxDriveVolts = kBatteryNominalVoltage;
     public static final double kDriveP = 1.0;

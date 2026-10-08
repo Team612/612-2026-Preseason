@@ -6,86 +6,65 @@ import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
 import frc.robot.subsystems.Swerve;
+import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 
 /** Converts Xbox stick input into field relative or robot relative swerve commands. i hope this works dont test unecessarily */
 public class ArcadeDrive extends Command {
   private final Swerve swerve;
-  private final CommandXboxController controller;
-
-  /*
-   * Optional acceleration limiting for future drive testing:
-   * Uncomment the SlewRateLimiter import above and these fields, then uncomment the reset block
-   * in initialize() and the calculation block in execute() i can do this later. Rates use normalized stick units/sec;
-   * the negative rate must be negative. Translation has independent forward/strafe limiters, and
-   * rotation has its own pair of acceleration/deceleration rates.
-   *
-   * private final SlewRateLimiter forwardLimiter = new SlewRateLimiter(2.0, -4.0, 0.0);
-   * private final SlewRateLimiter strafeLimiter = new SlewRateLimiter(2.0, -4.0, 0.0);
-   * private final SlewRateLimiter rotationLimiter = new SlewRateLimiter(3.0, -6.0, 0.0);
-   */
+  private final DoubleSupplier forwardSupplier;
+  private final DoubleSupplier strafeSupplier;
+  private final DoubleSupplier rotationSupplier;
+  private final BooleanSupplier controllerConnectedSupplier;
 
   private boolean fieldRelativeMode;
 
-  public ArcadeDrive(Swerve swerve, CommandXboxController controller) {
-    this.swerve = swerve;
-    this.controller = controller;
-    addRequirements(swerve);
+  public ArcadeDrive(
+      Swerve swerve,
+      DoubleSupplier forwardSupplier,
+      DoubleSupplier strafeSupplier,
+      DoubleSupplier rotationSupplier,
+      BooleanSupplier controllerConnectedSupplier) {
+    this.swerve = Objects.requireNonNull(swerve);
+    this.forwardSupplier = Objects.requireNonNull(forwardSupplier);
+    this.strafeSupplier = Objects.requireNonNull(strafeSupplier);
+    this.rotationSupplier = Objects.requireNonNull(rotationSupplier);
+    this.controllerConnectedSupplier = Objects.requireNonNull(controllerConnectedSupplier);
+    addRequirements(this.swerve);
   }
 
   @Override
   public void initialize() {
-    /*
-     * Uncomment with the limiter fields above so each command starts with no stored input:
-     * forwardLimiter.reset(0.0);
-     * strafeLimiter.reset(0.0);
-     * rotationLimiter.reset(0.0);
-     */
     swerve.stop();
   }
 
   @Override
   public void execute() {
-    double leftX = controller.getLeftX();
-    double leftY = controller.getLeftY();
-    double rightX = controller.getRightX();
-    boolean controllerConnected = controller.getHID().isConnected();
+    double forward = forwardSupplier.getAsDouble();
+    double strafe = strafeSupplier.getAsDouble();
+    double rotation = rotationSupplier.getAsDouble();
+    boolean controllerConnected = controllerConnectedSupplier.getAsBoolean();
 
     SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
     SmartDashboard.putBoolean("Drive/ControllerConnected", controllerConnected);
-    SmartDashboard.putNumber("Drive/LeftX", leftX);
-    SmartDashboard.putNumber("Drive/LeftY", leftY);
-    SmartDashboard.putNumber("Drive/RightX", rightX);
+    SmartDashboard.putNumber("Drive/ForwardInput", forward);
+    SmartDashboard.putNumber("Drive/StrafeInput", strafe);
+    SmartDashboard.putNumber("Drive/RotationInput", rotation);
 
     if (!controllerConnected
-        || !Double.isFinite(leftX)
-        || !Double.isFinite(leftY)
-        || !Double.isFinite(rightX)) {
+        || !Double.isFinite(forward)
+        || !Double.isFinite(strafe)
+        || !Double.isFinite(rotation)) {
       publishRequestedSpeeds(new ChassisSpeeds());
       swerve.stop();
       return;
     }
 
-    ChassisSpeeds requestedSpeeds = fromControllerAxes(leftX, leftY, rightX);
-
-    /*
-     *
-     *
-     * Translation2d translationInput =
-     *     applyTranslationDeadband(
-     *         -leftY, -leftX, Constants.OperatorConstants.kDeadband);
-     * double rotationInput =
-     *     MathUtil.applyDeadband(
-     *         MathUtil.clamp(-rightX, -1.0, 1.0), Constants.OperatorConstants.kDeadband);
-     * double limitedForward = forwardLimiter.calculate(translationInput.getX());
-     * double limitedStrafe = strafeLimiter.calculate(translationInput.getY());
-     * double limitedRotation = rotationLimiter.calculate(rotationInput);
-     * requestedSpeeds =
-     *     toChassisSpeeds(limitedForward, limitedStrafe, limitedRotation);
-     */
+    ChassisSpeeds requestedSpeeds = fromControllerInputs(forward, strafe, rotation);
 
     publishRequestedSpeeds(requestedSpeeds);
     if (requestedSpeeds.vxMetersPerSecond == 0.0
@@ -124,16 +103,22 @@ public class ArcadeDrive extends Command {
     return new Translation2d(forward, strafe);
   }
 
-  /** Applies Xbox stick-axis direction, deadband */
+  /** Applies Xbox axis conventions before mapping the sticks to chassis velocity. */
   static ChassisSpeeds fromControllerAxes(double leftX, double leftY, double rightX) {
+    return fromControllerInputs(-leftY, -leftX, -rightX);
+  }
+
+  /** Converts signed, normalized forward/left/counterclockwise inputs to chassis speeds. */
+  static ChassisSpeeds fromControllerInputs(
+      double forwardInput, double strafeInput, double rotationInput) {
     Translation2d translationInput =
         applyTranslationDeadband(
-            -leftY, -leftX, Constants.OperatorConstants.kDeadband);
-    double rotationInput =
+            forwardInput, strafeInput, Constants.OperatorConstants.kDeadband);
+    double deadbandedRotation =
         MathUtil.applyDeadband(
-            MathUtil.clamp(-rightX, -1.0, 1.0), Constants.OperatorConstants.kDeadband);
+            MathUtil.clamp(rotationInput, -1.0, 1.0), Constants.OperatorConstants.kDeadband);
     return toChassisSpeeds(
-        translationInput.getX(), translationInput.getY(), rotationInput);
+        translationInput.getX(), translationInput.getY(), deadbandedRotation);
   }
 
   /** Maps normalized stick axes to chassis velocities in meters per second and radians per second units apparenlty do matter */

@@ -67,15 +67,45 @@ class ArcadeDriveTest {
   }
 
   @Test
-  void justAboveDeadbandProducesSmallNonzeroChassisSpeed() {
-    ChassisSpeeds speeds = ArcadeDrive.fromControllerAxes(0.0, -0.06, 0.0);
+  void supplierInputsMapForwardStrafeAndRotationToRobotRelativeSpeeds() {
+    ChassisSpeeds speeds = ArcadeDrive.fromControllerInputs(1.0, -1.0, 0.5);
 
     assertEquals(
-        (0.06 - Constants.OperatorConstants.kDeadband)
+        Constants.SwerveConstants.kMaxSpeedMetersPerSecond / Math.sqrt(2.0),
+        speeds.vxMetersPerSecond,
+        1e-9);
+    assertEquals(
+        -Constants.SwerveConstants.kMaxSpeedMetersPerSecond / Math.sqrt(2.0),
+        speeds.vyMetersPerSecond,
+        1e-9);
+    assertEquals(
+        ((0.5 - Constants.OperatorConstants.kDeadband)
+                / (1.0 - Constants.OperatorConstants.kDeadband))
+            * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec,
+        speeds.omegaRadiansPerSecond,
+        1e-9);
+  }
+
+  @Test
+  void justAboveDeadbandProducesSmallNonzeroChassisSpeed() {
+    double justAboveDeadband = Constants.OperatorConstants.kDeadband + 0.01;
+    ChassisSpeeds speeds = ArcadeDrive.fromControllerAxes(0.0, -justAboveDeadband, 0.0);
+
+    assertEquals(
+        (justAboveDeadband - Constants.OperatorConstants.kDeadband)
             / (1.0 - Constants.OperatorConstants.kDeadband)
             * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
         speeds.vxMetersPerSecond,
         1e-9);
+    assertEquals(0.0, speeds.vyMetersPerSecond, 1e-9);
+    assertEquals(0.0, speeds.omegaRadiansPerSecond, 1e-9);
+  }
+
+  @Test
+  void smallStickDriftIsDeadbanded() {
+    ChassisSpeeds speeds = ArcadeDrive.fromControllerAxes(0.08, -0.07, -0.09);
+
+    assertEquals(0.0, speeds.vxMetersPerSecond, 1e-9);
     assertEquals(0.0, speeds.vyMetersPerSecond, 1e-9);
     assertEquals(0.0, speeds.omegaRadiansPerSecond, 1e-9);
   }
