@@ -16,8 +16,8 @@ public class RobotContainer {
           swerve,
           // couple of da lambdas
           () -> -driverController.getLeftY(),
-          () -> -driverController.getLeftX(),
           () -> -driverController.getRightX(),
+          () -> 0.0,
           () -> driverController.getHID().isConnected());
 
   public RobotContainer() {

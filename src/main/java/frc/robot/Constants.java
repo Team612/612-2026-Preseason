@@ -62,7 +62,7 @@ public final class Constants {
 
   public static final class SwerveConstants {
     public static final CANBus kCanBus = CANBus.roboRIO();
-    public static final int kPigeonCanId = 0;
+    public static final int kPigeonCanId = 0; // should be right
     public static final double kWheelBaseMeters = wheelBase;
     public static final double kTrackWidthMeters = trackWidth;
     public static final double kWheelDiameterMeters = 0.0889;
@@ -90,7 +90,7 @@ public final class Constants {
     public static final double kMaxTurnRadPerSec = Math.PI * 2.0;
     public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
     public static final double kMaxTurnVolts = 4.0;
-    public static final double kDriveSupplyLimitAmps = 12.0; // guess
+    public static final double kDriveSupplyLimitAmps = 12.0; // guess based on the amount of volts our battery got
     public static final double kDriveStatorLimitAmps = 12.0; // guess
     public static final double kTurnSupplyLimitAmps = 12.0;  // guess
     public static final double kTurnStatorLimitAmps = 12.0; // guess
