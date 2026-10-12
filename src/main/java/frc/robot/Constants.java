@@ -90,10 +90,10 @@ public final class Constants {
     public static final double kMaxTurnRadPerSec = Math.PI * 2.0;
     public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
     public static final double kMaxTurnVolts = 4.0;
-    public static final double kDriveSupplyLimitAmps = 30.0; // guess
-    public static final double kDriveStatorLimitAmps = 60.0; // guess
-    public static final double kTurnSupplyLimitAmps = 15.0;  // guess
-    public static final double kTurnStatorLimitAmps = 25.0; // guess
+    public static final double kDriveSupplyLimitAmps = 12.0; // guess
+    public static final double kDriveStatorLimitAmps = 12.0; // guess
+    public static final double kTurnSupplyLimitAmps = 12.0;  // guess
+    public static final double kTurnStatorLimitAmps = 12.0; // guess
 
     public static final ModuleConfiguration kFrontLeft =
         new ModuleConfiguration(
