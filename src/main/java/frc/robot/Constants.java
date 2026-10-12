@@ -78,7 +78,7 @@ public final class Constants {
     public static final double kMaxDriveCorrectionVolts = 1.0;
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
     public static final boolean kEnableDriveVelocityCorrection = true;
-    public static final double kTurnP = 4.0;
+    public static final double kTurnP = 0.5;
     public static final double kTurnI = 0.0;
     public static final double kTurnD = 0.0;
     public static final double kTurnVelocityDamping = 0.15;

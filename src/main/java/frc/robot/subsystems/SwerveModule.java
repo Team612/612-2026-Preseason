@@ -72,8 +72,13 @@ public class SwerveModule {
         turnMotor.getConfigurator().apply(motorConfig(false));
     CANcoderConfiguration encoderConfiguration = new CANcoderConfiguration();
     encoderConfiguration.MagnetSensor.MagnetOffset = 0.0;
-    encoderConfiguration.MagnetSensor.SensorDirection = configuration.encoderInverted()
-        ? SensorDirectionValue.Clockwise_Positive : SensorDirectionValue.CounterClockwise_Positive;
+    if (configuration.encoderInverted()) {
+      encoderConfiguration.MagnetSensor.SensorDirection =
+          SensorDirectionValue.Clockwise_Positive;
+    } else {
+      encoderConfiguration.MagnetSensor.SensorDirection =
+          SensorDirectionValue.CounterClockwise_Positive;
+    }
     encoderConfiguration.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
     StatusCode encoderStatus = encoder.getConfigurator().apply(encoderConfiguration);
     StatusCode signalStatus = BaseStatusSignal.setUpdateFrequencyForAll(
@@ -101,17 +106,33 @@ public class SwerveModule {
 
   private TalonFXConfiguration motorConfig(boolean isDriveMotor) {
     TalonFXConfiguration motorConfiguration = new TalonFXConfiguration();
-    motorConfiguration.CurrentLimits.SupplyCurrentLimit = isDriveMotor
-        ? Constants.SwerveConstants.kDriveSupplyLimitAmps
-        : Constants.SwerveConstants.kTurnSupplyLimitAmps;
+    if (isDriveMotor) {
+      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
+          Constants.SwerveConstants.kDriveSupplyLimitAmps;
+    } else {
+      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
+          Constants.SwerveConstants.kTurnSupplyLimitAmps;
+    }
     motorConfiguration.CurrentLimits.SupplyCurrentLimitEnable = true;
-    motorConfiguration.CurrentLimits.StatorCurrentLimit = isDriveMotor
-        ? Constants.SwerveConstants.kDriveStatorLimitAmps
-        : Constants.SwerveConstants.kTurnStatorLimitAmps;
+    if (isDriveMotor) {
+      motorConfiguration.CurrentLimits.StatorCurrentLimit =
+          Constants.SwerveConstants.kDriveStatorLimitAmps;
+    } else {
+      motorConfiguration.CurrentLimits.StatorCurrentLimit =
+          Constants.SwerveConstants.kTurnStatorLimitAmps;
+    }
     motorConfiguration.CurrentLimits.StatorCurrentLimitEnable = true;
-    boolean inverted = isDriveMotor ? configuration.driveInverted() : configuration.turnInverted();
-    motorConfiguration.MotorOutput.Inverted = inverted
-        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
+    boolean inverted;
+    if (isDriveMotor) {
+      inverted = configuration.driveInverted();
+    } else {
+      inverted = configuration.turnInverted();
+    }
+    if (inverted) {
+      motorConfiguration.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
+    } else {
+      motorConfiguration.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
+    }
     motorConfiguration.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     return motorConfiguration;
   }
@@ -142,9 +163,8 @@ public class SwerveModule {
 
     if (Math.abs(targetState.speedMetersPerSecond)
         < Constants.SwerveConstants.kMinimumModuleSpeedMetersPerSecond) {
-      targetSpeedMetersPerSecond = 0.0;
-      setAngle(angle, lastTargetAngle);
-      setSpeed(0.0);
+      turnOptimizationReversed = false;
+      stop();
       return;
     }
 
@@ -159,8 +179,11 @@ public class SwerveModule {
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
     double error = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
     double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
-    turnOptimizationReversed =
-        error > Math.PI / 2.0 + (turnOptimizationReversed ? -hysteresis : hysteresis);
+    double threshold = Math.PI / 2.0 + hysteresis;
+    if (turnOptimizationReversed) {
+      threshold = Math.PI / 2.0 - hysteresis;
+    }
+    turnOptimizationReversed = error > threshold;
     SwerveModuleState optimizedState =
         new SwerveModuleState(requestedState.speedMetersPerSecond, requestedState.angle);
     if (turnOptimizationReversed) {
@@ -366,8 +389,11 @@ public class SwerveModule {
     SmartDashboard.putNumber(name + "/AbsoluteRotations", rotations);
     SmartDashboard.putBoolean(key + "EncoderOK", Double.isFinite(rotations));
     SmartDashboard.putBoolean(key + "CanCopyOffset", canCopyOffset);
-    SmartDashboard.putNumber(key + "OffsetToCopyWhenForward",
-        canCopyOffset ? rotations : Double.NaN);
+    double offsetToCopy = Double.NaN;
+    if (canCopyOffset) {
+      offsetToCopy = rotations;
+    }
+    SmartDashboard.putNumber(key + "OffsetToCopyWhenForward", offsetToCopy);
     SmartDashboard.putNumber(key + "EncoderRateDegreesPerSecond", rate);
     if (configuration != null) {
       SmartDashboard.putNumber(key + "DriveMotorId", configuration.driveCanId());
@@ -440,6 +466,9 @@ public class SwerveModule {
   }
 
   private static double finiteOrZero(double value) {
-    return Double.isFinite(value) ? value : 0.0;
+    if (Double.isFinite(value)) {
+      return value;
+    }
+    return 0.0;
   }
 }

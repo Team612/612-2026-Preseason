@@ -208,6 +208,7 @@ public class Swerve extends SubsystemBase {
     }
   }
 
+  // return true if the geometry constants are valid (positive and real numbers)
   private boolean validGeometry() {
     return isPositiveFinite(Constants.SwerveConstants.kWheelBaseMeters)
         && isPositiveFinite(Constants.SwerveConstants.kTrackWidthMeters)
