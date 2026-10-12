@@ -88,7 +88,10 @@ public class SwerveModule {
     encoder.hasResetOccurred();
     boolean success = driveStatus.isOK() && turnStatus.isOK()
         && encoderStatus.isOK() && signalStatus.isOK();
-    if (!success) {
+
+
+        // logs if failed
+        if (!success) {
       DriverStation.reportError(name + " configuration failed: drive=" + driveStatus
           + ", turn=" + turnStatus + ", encoder=" + encoderStatus
           + ", signals=" + signalStatus, false);

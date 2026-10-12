@@ -179,7 +179,7 @@ public class Swerve extends SubsystemBase {
     if (!hardwareEnabled) {
       return false;
     }
-    for (SwerveModule module : modules) {
+    for (SwerveModule module : modules) { // enhanced for loop to iterate throughout modules
       if (!module.isReady()) {
         return false;
       }
@@ -192,6 +192,7 @@ public class Swerve extends SubsystemBase {
     if (modulesReady == previousModulesReady) {
       return;
     }
+    // more logs
     if (modulesReady) {
       DriverStation.reportWarning("Swerve module health restored.", false);
     } else {
