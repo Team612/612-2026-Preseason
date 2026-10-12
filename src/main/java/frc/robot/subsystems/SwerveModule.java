@@ -1,23 +1,26 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.ctre.phoenix6.signals.SensorDirectionValue;
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
 
-/** Controls one wheel's drive motor, steering motor, and absolute angle encoder. */
 public class SwerveModule {
   private final String name;
   private final Constants.ModuleConfiguration configuration;
@@ -32,9 +35,10 @@ public class SwerveModule {
       Constants.SwerveConstants.kTurnP, Constants.SwerveConstants.kTurnI,
       Constants.SwerveConstants.kTurnD,
       new TrapezoidProfile.Constraints(Constants.SwerveConstants.kMaxTurnRadPerSec,
-          Constants.SwerveConstants.kMaxTurnAccelRadPerSecSquared));
+          Constants.SwerveConstants.kMaxTurnAccelRadPerSecSquared), Constants.kLoopPeriodSeconds);
   private Rotation2d lastTargetAngle = new Rotation2d();
   private boolean turnControllerInitialized;
+  private boolean turnOptimizationReversed;
   private double targetSpeedMetersPerSecond;
   private double driveSpeedScale;
   private double driveBaseVolts;
@@ -46,13 +50,12 @@ public class SwerveModule {
       String name, Constants.ModuleConfiguration configuration, boolean hardwareEnabled) {
     this.name = name;
     this.configuration = configuration;
-    // Steering angles wrap at +/- pi; continuous input makes the controller take the short path.
     turnController.enableContinuousInput(-Math.PI, Math.PI);
-    if (hardwareEnabled && configuration.hasConfiguredCanIds()) {
+    if (hardwareEnabled && configuration != null && configuration.hasValidIds()) {
       driveMotor = new TalonFX(configuration.driveCanId(), Constants.SwerveConstants.kCanBus);
       turnMotor = new TalonFX(configuration.turnCanId(), Constants.SwerveConstants.kCanBus);
       encoder = new CANcoder(configuration.encoderCanId(), Constants.SwerveConstants.kCanBus);
-      configurationSuccessful = configureMotors();
+      configurationSuccessful = configureHardware();
       nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
     } else {
       driveMotor = null;
@@ -62,49 +65,54 @@ public class SwerveModule {
     }
   }
 
-  private boolean configureMotors() {
+  private boolean configureHardware() {
     StatusCode driveStatus =
-        driveMotor.getConfigurator().apply(createMotorConfiguration(true));
+        driveMotor.getConfigurator().apply(motorConfig(true));
     StatusCode turnStatus =
-        turnMotor.getConfigurator().apply(createMotorConfiguration(false));
-    return driveStatus.isOK() && turnStatus.isOK();
+        turnMotor.getConfigurator().apply(motorConfig(false));
+    CANcoderConfiguration encoderConfiguration = new CANcoderConfiguration();
+    encoderConfiguration.MagnetSensor.MagnetOffset = 0.0;
+    encoderConfiguration.MagnetSensor.SensorDirection = configuration.encoderInverted()
+        ? SensorDirectionValue.Clockwise_Positive : SensorDirectionValue.CounterClockwise_Positive;
+    encoderConfiguration.MagnetSensor.AbsoluteSensorDiscontinuityPoint = 0.5;
+    StatusCode encoderStatus = encoder.getConfigurator().apply(encoderConfiguration);
+    StatusCode signalStatus = BaseStatusSignal.setUpdateFrequencyForAll(
+        Constants.SwerveConstants.kSensorUpdateFrequencyHz,
+        encoder.getAbsolutePosition(), encoder.getVelocity(),
+        encoder.getFault_BadMagnet(),
+        driveMotor.getPosition(), driveMotor.getVelocity(),
+        turnMotor.getPosition());
+    turnControllerInitialized = false;
+    driveMotor.hasResetOccurred();
+    turnMotor.hasResetOccurred();
+    encoder.hasResetOccurred();
+    boolean success = driveStatus.isOK() && turnStatus.isOK()
+        && encoderStatus.isOK() && signalStatus.isOK();
+    if (!success) {
+      DriverStation.reportError(name + " configuration failed: drive=" + driveStatus
+          + ", turn=" + turnStatus + ", encoder=" + encoderStatus
+          + ", signals=" + signalStatus, false);
+    }
+    return success;
   }
 
-  /** Builds common motor settings while choosing the correct limits and inversion per motor. */
-  private TalonFXConfiguration createMotorConfiguration(boolean isDriveMotor) {
+  private TalonFXConfiguration motorConfig(boolean isDriveMotor) {
     TalonFXConfiguration motorConfiguration = new TalonFXConfiguration();
-    if (isDriveMotor) {
-      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
-          Constants.SwerveConstants.kDriveSupplyLimitAmps;
-    } else {
-      motorConfiguration.CurrentLimits.SupplyCurrentLimit =
-          Constants.SwerveConstants.kTurnSupplyLimitAmps;
-    }
+    motorConfiguration.CurrentLimits.SupplyCurrentLimit = isDriveMotor
+        ? Constants.SwerveConstants.kDriveSupplyLimitAmps
+        : Constants.SwerveConstants.kTurnSupplyLimitAmps;
     motorConfiguration.CurrentLimits.SupplyCurrentLimitEnable = true;
-    if (isDriveMotor) {
-      motorConfiguration.CurrentLimits.StatorCurrentLimit =
-          Constants.SwerveConstants.kDriveStatorLimitAmps;
-    } else {
-      motorConfiguration.CurrentLimits.StatorCurrentLimit =
-          Constants.SwerveConstants.kTurnStatorLimitAmps;
-    }
+    motorConfiguration.CurrentLimits.StatorCurrentLimit = isDriveMotor
+        ? Constants.SwerveConstants.kDriveStatorLimitAmps
+        : Constants.SwerveConstants.kTurnStatorLimitAmps;
     motorConfiguration.CurrentLimits.StatorCurrentLimitEnable = true;
-    boolean inverted;
-    if (isDriveMotor) {
-      inverted = configuration.driveInverted();
-    } else {
-      inverted = configuration.turnInverted();
-    }
-    if (inverted) {
-      motorConfiguration.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
-    } else {
-      motorConfiguration.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
-    }
+    boolean inverted = isDriveMotor ? configuration.driveInverted() : configuration.turnInverted();
+    motorConfiguration.MotorOutput.Inverted = inverted
+        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     motorConfiguration.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     return motorConfiguration;
   }
 
-  /** Converts a chassis kinematics result into safe drive and steering motor requests. */
   public void setState(SwerveModuleState targetState) {
     if (targetState == null || targetState.angle == null
         || !Double.isFinite(targetState.speedMetersPerSecond)
@@ -113,49 +121,66 @@ public class SwerveModule {
       return;
     }
     Rotation2d angle = getAngle();
-    if (angle == null || !validDriveLimits() || !validTurnLimit()) {
+    if (DriverStation.isDisabled() || !isReady() || angle == null
+        || !isPositiveFinite(Constants.SwerveConstants.kMaxSpeedMetersPerSecond)
+        || !isPositiveFinite(Constants.SwerveConstants.kMaxDriveVolts)
+        || !Double.isFinite(Constants.SwerveConstants.kDriveKV)
+        || Constants.SwerveConstants.kDriveKV < 0.0
+        || !isPositiveFinite(Constants.SwerveConstants.kMaxTurnVolts)) {
       stop();
       return;
     }
-    initializeTurnController(angle);
+    if (!turnControllerInitialized) {
+      turnController.reset(angle.getRadians());
+      lastTargetAngle = angle;
+      turnOptimizationReversed = false;
+      turnControllerInitialized = true;
+    }
 
-    if (isBelowMinimumModuleSpeed(targetState.speedMetersPerSecond)) {
-      stop();
+    if (Math.abs(targetState.speedMetersPerSecond)
+        < Constants.SwerveConstants.kMinimumModuleSpeedMetersPerSecond) {
+      targetSpeedMetersPerSecond = 0.0;
+      setAngle(angle, lastTargetAngle);
+      setSpeed(0.0);
       return;
     }
 
-    SwerveModuleState moduleState = alignToMeasuredAngle(targetState, angle);
+    SwerveModuleState moduleState = optimizeState(targetState, angle);
     targetSpeedMetersPerSecond = moduleState.speedMetersPerSecond;
     lastTargetAngle = moduleState.angle;
-    commandTurn(angle, moduleState.angle);
-    commandDrive(moduleState.speedMetersPerSecond);
+    setAngle(angle, moduleState.angle);
+    setSpeed(moduleState.speedMetersPerSecond);
   }
 
-  /** Applies WPILib's shortest-turn optimization and cosine compensation. */
-  static SwerveModuleState alignToMeasuredAngle(
+  private SwerveModuleState optimizeState(
       SwerveModuleState requestedState, Rotation2d measuredAngle) {
+    double error = Math.abs(requestedState.angle.minus(measuredAngle).getRadians());
+    double hysteresis = Constants.SwerveConstants.kTurnOptimizationHysteresisRad;
+    turnOptimizationReversed =
+        error > Math.PI / 2.0 + (turnOptimizationReversed ? -hysteresis : hysteresis);
     SwerveModuleState optimizedState =
         new SwerveModuleState(requestedState.speedMetersPerSecond, requestedState.angle);
-    optimizedState.optimize(measuredAngle);
-    optimizedState.cosineScale(measuredAngle);
+    if (turnOptimizationReversed) {
+      optimizedState.speedMetersPerSecond *= -1.0;
+      optimizedState.angle = optimizedState.angle.rotateBy(Rotation2d.kPi);
+    }
+    optimizedState.speedMetersPerSecond *=
+        Math.max(0.0, optimizedState.angle.minus(measuredAngle).getCos());
     return optimizedState;
   }
 
-  static boolean isBelowMinimumModuleSpeed(double speedMetersPerSecond) {
-    return Math.abs(speedMetersPerSecond)
-        < Constants.SwerveConstants.kMinimumModuleSpeedMetersPerSecond;
-  }
-
-  private void commandTurn(Rotation2d angle, Rotation2d targetAngle) {
-    if (turnMotor == null || !validTurnLimit()) {
-      turnVolts = 0.0;
-      if (turnMotor != null) {
-        turnMotor.setControl(turnVoltageRequest.withOutput(0.0));
-      }
-      return;
-    }
+  private void setAngle(Rotation2d angle, Rotation2d targetAngle) {
+    double turnRate = getTurnRateRadPerSec();
     double output =
         turnController.calculate(angle.getRadians(), targetAngle.getRadians());
+    output += Constants.SwerveConstants.kTurnVelocityDamping
+        * (turnController.getSetpoint().velocity - turnRate);
+    if (Math.abs(targetAngle.minus(angle).getRadians())
+        <= Constants.SwerveConstants.kTurnToleranceRad
+        && Math.abs(turnRate) <= Constants.SwerveConstants.kTurnSettledVelocityRadPerSec) {
+      output = 0.0;
+      turnController.reset(angle.getRadians());
+    }
     turnVolts =
         finiteOrZero(
             MathUtil.clamp(
@@ -165,30 +190,28 @@ public class SwerveModule {
     turnMotor.setControl(turnVoltageRequest.withOutput(turnVolts));
   }
 
-  private void initializeTurnController(Rotation2d angle) {
-    if (!turnControllerInitialized) {
-      turnController.reset(angle.getRadians());
-      lastTargetAngle = angle;
-      turnControllerInitialized = true;
-    }
-  }
-
-  private void commandDrive(double targetSpeed) {
-    // Convert wheel speed to open-loop voltage, then add a small measured-speed correction.
+  private void setSpeed(double targetSpeed) {
     driveSpeedScale =
         MathUtil.clamp(
             targetSpeed / Constants.SwerveConstants.kMaxSpeedMetersPerSecond, -1.0, 1.0);
-    driveBaseVolts = driveSpeedScale * Constants.SwerveConstants.kMaxDriveVolts;
+    driveBaseVolts = targetSpeed * Constants.SwerveConstants.kDriveKV;
     driveCorrectionVolts = 0.0;
-    if (Constants.SwerveConstants.kEnableDriveVelocityCorrection && hasValidDriveMeasurement()
-        && Double.isFinite(Constants.SwerveConstants.kDriveP) && validPVoltageLimit()) {
+    if (Math.abs(targetSpeed) < 1e-6) {
+      driveVolts = 0.0;
+      driveMotor.setControl(driveVoltageRequest.withOutput(0.0));
+      return;
+    }
+    if (Constants.SwerveConstants.kEnableDriveVelocityCorrection && speedReady()
+        && Double.isFinite(Constants.SwerveConstants.kDriveP)
+        && Constants.SwerveConstants.kMaxDriveCorrectionVolts >= 0.0
+        && Double.isFinite(Constants.SwerveConstants.kMaxDriveCorrectionVolts)) {
       double measuredSpeed = getSpeed();
       if (Double.isFinite(measuredSpeed)) {
         driveCorrectionVolts =
             MathUtil.clamp(
                 Constants.SwerveConstants.kDriveP * (targetSpeed - measuredSpeed),
-                -Constants.SwerveConstants.kMaxPVolts,
-                Constants.SwerveConstants.kMaxPVolts);
+                -Constants.SwerveConstants.kMaxDriveCorrectionVolts,
+                Constants.SwerveConstants.kMaxDriveCorrectionVolts);
       }
     }
     driveVolts =
@@ -200,70 +223,62 @@ public class SwerveModule {
     driveMotor.setControl(driveVoltageRequest.withOutput(driveVolts));
   }
 
-  public SwerveModuleState getState() {
-    Rotation2d angle = getAngle();
-    if (angle == null || !hasValidDriveMeasurement()) {
-      return new SwerveModuleState(0.0, lastTargetAngle);
-    }
-    return new SwerveModuleState(getSpeed(), angle);
-  }
-
   public SwerveModulePosition getPosition() {
-    SwerveModulePosition position = getPositionIfValid();
-    if (position == null) {
-      return new SwerveModulePosition(0.0, lastTargetAngle);
-    }
-    return position;
-  }
-
-  public SwerveModulePosition getPositionIfValid() {
     Rotation2d angle = getAngle();
-    if (angle == null || driveMotor == null || !hasValidDriveConversion()) {
+    if (angle == null || driveMotor == null || !validWheelConfig()) {
       return null;
     }
     var position = driveMotor.getPosition();
     double motorRotations = position.getValueAsDouble();
-    if (!position.getStatus().isOK() || !Double.isFinite(motorRotations)) {
+    if (!isFresh(position) || !Double.isFinite(motorRotations)) {
       return null;
     }
     double distanceMeters =
         motorRotations
             / Constants.SwerveConstants.kDriveReduction
-            * wheelCircumferenceMeters();
+            * (Math.PI * Constants.SwerveConstants.kWheelDiameterMeters);
     if (!Double.isFinite(distanceMeters)) {
       return null;
     }
     return new SwerveModulePosition(distanceMeters, angle);
   }
 
-  public boolean hasValidDriveMeasurement() {
-    if (driveMotor == null || !hasValidDriveConversion()) {
+  private boolean speedReady() {
+    if (driveMotor == null || !validWheelConfig()) {
       return false;
     }
     var velocity = driveMotor.getVelocity();
-    return velocity.getStatus().isOK() && Double.isFinite(velocity.getValueAsDouble());
+    return isFresh(velocity) && Double.isFinite(velocity.getValueAsDouble());
   }
 
-  public boolean hasValidDrivePosition() {
-    if (driveMotor == null || !hasValidDriveConversion()) {
-      return false;
+  public void periodic() {
+    if (driveMotor == null) {
+      return;
     }
-    var position = driveMotor.getPosition();
-    return position.getStatus().isOK() && Double.isFinite(position.getValueAsDouble());
-  }
-
-  public boolean hasValidPosition() {
-    return getPositionIfValid() != null;
+    boolean deviceReset = driveMotor.hasResetOccurred();
+    deviceReset |= turnMotor.hasResetOccurred();
+    deviceReset |= encoder.hasResetOccurred();
+    if (deviceReset) {
+      configurationSuccessful = false;
+      nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
+      stop();
+      DriverStation.reportWarning(name + " device restarted; disable to reconfigure.", false);
+    }
+    if (DriverStation.isDisabled() && !configurationSuccessful
+        && Timer.getFPGATimestamp() >= nextConfigurationRetrySeconds) {
+      configurationSuccessful = configureHardware();
+      nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
+    }
   }
 
   public boolean isReady() {
-    if (!configurationSuccessful && driveMotor != null && turnMotor != null
-        && Timer.getFPGATimestamp() >= nextConfigurationRetrySeconds) {
-      configurationSuccessful = configureMotors();
-      nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
+    if (!configurationSuccessful || getAngle() == null || !speedReady()
+        || !Double.isFinite(getTurnRateRadPerSec())) {
+      return false;
     }
-    return configurationSuccessful
-        && getAngle() != null;
+    var position = driveMotor.getPosition();
+    return isFresh(position) && Double.isFinite(position.getValueAsDouble())
+        && isFresh(turnMotor.getPosition());
   }
 
   public void stop() {
@@ -276,30 +291,28 @@ public class SwerveModule {
     if (driveMotor != null) {
       driveMotor.setControl(driveVoltageRequest.withOutput(0.0));
     }
+    turnControllerInitialized = false;
     if (angle != null) {
       lastTargetAngle = angle;
       turnController.reset(angle.getRadians());
     }
-    if (turnMotor != null && validTurnLimit()) {
-      turnVolts = 0.0;
+    turnVolts = 0.0;
+    if (turnMotor != null) {
       turnMotor.setControl(turnVoltageRequest.withOutput(0.0));
-    } else {
-      turnVolts = 0.0;
-      if (turnMotor != null) {
-        turnMotor.setControl(turnVoltageRequest.withOutput(0.0));
-      }
     }
   }
 
-  /** Publishes measured values and the last requested setpoints for this module. */
-  public void publishTelemetry() {
+  public void updateDashboard() {
     Rotation2d angle = getAngle();
+    updateCalibration();
     SmartDashboard.putNumber(
         name + "/TargetSpeedMetersPerSecond", targetSpeedMetersPerSecond);
-    SmartDashboard.putBoolean(name + "/DriveMeasurementValid", hasValidDriveMeasurement());
+    SmartDashboard.putBoolean(name + "/DriveMeasurementValid", speedReady());
     SmartDashboard.putBoolean(name + "/Ready", isReady());
+    SmartDashboard.putBoolean(name + "/ConfigurationOK", configurationSuccessful);
+    SmartDashboard.putBoolean(name + "/OptimizationReversed", turnOptimizationReversed);
     double measuredSpeed = 0.0;
-    if (hasValidDriveMeasurement()) {
+    if (speedReady()) {
       measuredSpeed = getSpeed();
     }
     SmartDashboard.putNumber(name + "/MeasuredSpeedMetersPerSecond", measuredSpeed);
@@ -307,15 +320,17 @@ public class SwerveModule {
     SmartDashboard.putNumber(name + "/BaseVolts", driveBaseVolts);
     SmartDashboard.putNumber(name + "/PVolts", driveCorrectionVolts);
     SmartDashboard.putNumber(name + "/DriveVolts", driveVolts);
-    double angleRadians = 0.0;
+    double angleRadians = Double.NaN;
     if (angle != null) {
       angleRadians = angle.getRadians();
     }
     SmartDashboard.putNumber(name + "/AngleRadians", angleRadians);
+    SmartDashboard.putNumber(name + "/AngleDegrees", Math.toDegrees(angleRadians));
+    SmartDashboard.putNumber(name + "/TargetAngleDegrees", lastTargetAngle.getDegrees());
     SmartDashboard.putNumber(name + "/TargetAngleRadians", lastTargetAngle.getRadians());
     double turnErrorRadians = 0.0;
     if (angle != null) {
-      turnErrorRadians = turnController.getPositionError();
+      turnErrorRadians = lastTargetAngle.minus(angle).getRadians();
     }
     SmartDashboard.putNumber(
         name + "/TurnErrorRadians", turnErrorRadians);
@@ -330,68 +345,98 @@ public class SwerveModule {
     SmartDashboard.putNumber(name + "/DriveStatorCurrentAmps", statorCurrentAmps);
   }
 
-  /** Reads the absolute encoder and subtracts its configured zero offset. */
+  private void updateCalibration() {
+    String key = name + "/Calibration/";
+    double rotations = Double.NaN;
+    double rate = Double.NaN;
+    if (getAngle() != null) {
+      var position = encoder.getAbsolutePosition();
+      if (isFresh(position) && Double.isFinite(position.getValueAsDouble())) {
+        rotations = position.getValueAsDouble();
+      }
+      var velocity = encoder.getVelocity();
+      if (isFresh(velocity) && Double.isFinite(velocity.getValueAsDouble())) {
+        rate = velocity.getValueAsDouble() * 360.0;
+      }
+    }
+    boolean canCopyOffset = DriverStation.isDisabled() && Double.isFinite(rotations);
+    SmartDashboard.putNumber(name + "/AbsoluteRotations", rotations);
+    SmartDashboard.putBoolean(key + "EncoderOK", Double.isFinite(rotations));
+    SmartDashboard.putBoolean(key + "CanCopyOffset", canCopyOffset);
+    SmartDashboard.putNumber(key + "OffsetToCopyWhenForward",
+        canCopyOffset ? rotations : Double.NaN);
+    SmartDashboard.putNumber(key + "EncoderRateDegreesPerSecond", rate);
+    if (configuration != null) {
+      SmartDashboard.putNumber(key + "DriveMotorId", configuration.driveCanId());
+      SmartDashboard.putNumber(key + "SteerMotorId", configuration.turnCanId());
+      SmartDashboard.putNumber(key + "EncoderId", configuration.encoderCanId());
+      SmartDashboard.putNumber(key + "ConfiguredOffsetRotations", configuration.encoderOffsetRotations());
+      SmartDashboard.putBoolean(key + "DriveInverted", configuration.driveInverted());
+      SmartDashboard.putBoolean(key + "SteerInverted", configuration.turnInverted());
+      SmartDashboard.putBoolean(key + "EncoderInverted", configuration.encoderInverted());
+    }
+  }
+
   private Rotation2d getAngle() {
-    if (encoder == null) {
+    if (encoder == null || !configurationSuccessful) {
+      return null;
+    }
+    var magnetFault = encoder.getFault_BadMagnet();
+    if (!isFresh(magnetFault) || magnetFault.getValue()) {
       return null;
     }
     var absolutePosition = encoder.getAbsolutePosition();
     double rotations = absolutePosition.getValueAsDouble();
     double offsetRotations = configuration.encoderOffsetRotations();
-    if (!absolutePosition.getStatus().isOK()
+    if (!isFresh(absolutePosition)
         || !Double.isFinite(rotations)
         || !Double.isFinite(offsetRotations)) {
       return null;
     }
-    return Rotation2d.fromRotations(rotations - offsetRotations);
+    return Rotation2d.fromRadians(MathUtil.angleModulus(
+        (rotations - offsetRotations) * 2.0 * Math.PI));
   }
 
-  /** Converts motor rotations per second to wheel speed in meters per second. */
-  private double getSpeed() {
-    if (!hasValidDriveMeasurement()) {
-      return 0.0;
+  public double getSpeed() {
+    if (!speedReady()) {
+      return Double.NaN;
     }
     var velocity = driveMotor.getVelocity();
     double motorRotationsPerSecond = velocity.getValueAsDouble();
-    if (!velocity.getStatus().isOK() || !Double.isFinite(motorRotationsPerSecond)) {
-      return 0.0;
+    if (!isFresh(velocity) || !Double.isFinite(motorRotationsPerSecond)) {
+      return Double.NaN;
     }
     return motorRotationsPerSecond
         / Constants.SwerveConstants.kDriveReduction
-        * wheelCircumferenceMeters();
+        * (Math.PI * Constants.SwerveConstants.kWheelDiameterMeters);
   }
 
-  private boolean hasValidDriveConversion() {
+  private double getTurnRateRadPerSec() {
+    if (encoder == null) {
+      return Double.NaN;
+    }
+    var velocity = encoder.getVelocity();
+    if (!isFresh(velocity) || !Double.isFinite(velocity.getValueAsDouble())) {
+      return Double.NaN;
+    }
+    return velocity.getValueAsDouble() * 2.0 * Math.PI;
+  }
+
+  private boolean validWheelConfig() {
     return isPositiveFinite(Constants.SwerveConstants.kWheelDiameterMeters)
         && isPositiveFinite(Constants.SwerveConstants.kDriveReduction);
-  }
-
-  private boolean validDriveLimits() {
-    return isPositiveFinite(Constants.SwerveConstants.kMaxSpeedMetersPerSecond)
-        && isPositiveFinite(Constants.SwerveConstants.kMaxDriveVolts);
-  }
-
-  private boolean validPVoltageLimit() {
-    return Constants.SwerveConstants.kMaxPVolts >= 0.0
-        && Double.isFinite(Constants.SwerveConstants.kMaxPVolts);
-  }
-
-  private boolean validTurnLimit() {
-    return isPositiveFinite(Constants.SwerveConstants.kMaxTurnVolts);
-  }
-
-  private double wheelCircumferenceMeters() {
-    return Math.PI * Constants.SwerveConstants.kWheelDiameterMeters;
   }
 
   private static boolean isPositiveFinite(double value) {
     return value > 0.0 && Double.isFinite(value);
   }
 
-  private double finiteOrZero(double value) {
-    if (!Double.isFinite(value)) {
-      return 0.0;
-    }
-    return value;
+  private static boolean isFresh(BaseStatusSignal signal) {
+    return signal.getStatus().isOK()
+        && signal.getTimestamp().getLatency() <= Constants.SwerveConstants.kMaxSensorAgeSeconds;
+  }
+
+  private static double finiteOrZero(double value) {
+    return Double.isFinite(value) ? value : 0.0;
   }
 }
