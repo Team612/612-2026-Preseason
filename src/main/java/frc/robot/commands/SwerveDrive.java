@@ -49,8 +49,17 @@ public class SwerveDrive extends Command {
   @Override
   public void execute() {
     double forward = forwardSupplier.getAsDouble();
-    double strafe = strafeSupplier.getAsDouble();
-    double rotation = rotationSupplier.getAsDouble();
+    double leftStickStrafe = strafeSupplier.getAsDouble();
+    double rightStickX = rotationSupplier.getAsDouble();
+    double strafe;
+    double rotation;
+    if (fieldRelativeMode) {
+      strafe = leftStickStrafe;
+      rotation = rightStickX;
+    } else {
+      strafe = rightStickX;
+      rotation = 0.0;
+    }
     boolean controllerConnected = controllerConnectedSupplier.getAsBoolean();
 
     SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
@@ -58,6 +67,8 @@ public class SwerveDrive extends Command {
     SmartDashboard.putNumber("Drive/ForwardInput", forward);
     SmartDashboard.putNumber("Drive/StrafeInput", strafe);
     SmartDashboard.putNumber("Drive/RotationInput", rotation);
+    SmartDashboard.putNumber("Drive/LeftStickStrafeInput", leftStickStrafe);
+    SmartDashboard.putNumber("Drive/RightStickXInput", rightStickX);
 
     if (!DriverStation.isTeleopEnabled() || !controllerConnected || !swerve.isReady()
         || (fieldRelativeMode && !swerve.hasHeading())
