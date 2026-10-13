@@ -14,10 +14,10 @@ public class RobotContainer {
   private final SwerveDrive swerveDrive =
       new SwerveDrive(
           swerve,
-          // couple of da lambdas
+          // couple of da lambdas for movement 
           () -> -driverController.getLeftY(),
+          () -> -driverController.getLeftX(),
           () -> -driverController.getRightX(),
-          () -> 0.0,
           () -> driverController.getHID().isConnected());
 
   public RobotContainer() {
