@@ -38,7 +38,7 @@ public final class Constants {
   public static final boolean rearRightDriveInverted = false; // might be the problem
   public static final boolean rearRightSteerInverted = false; // might be the problem
   public static final boolean rearRightEncoderInverted = true; // might be t he problem
-  public static final double rearRightEncoderOffsetRotations = 0.299805 ;//
+  public static final double rearRightEncoderOffsetRotations = -0.201416 ;//
 
   public static final int rearLeftDriveMotorId = 7;
   public static final int rearLeftSteerMotorId = 8;
