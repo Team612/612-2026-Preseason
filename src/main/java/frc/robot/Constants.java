@@ -22,7 +22,7 @@ public final class Constants {
   public static final boolean frontLeftDriveInverted = false; // might be the problem
   public static final boolean frontLeftSteerInverted = false; // might be the problem
   public static final boolean frontLeftEncoderInverted = false; // might be the problem
-  public static final double frontLeftEncoderOffsetRotations = 0.277;
+  public static final double frontLeftEncoderOffsetRotations = -0.291504 ; // tuning value
 
   public static final int frontRightDriveMotorId = 3;
   public static final int frontRightSteerMotorId = 4;
@@ -30,7 +30,15 @@ public final class Constants {
   public static final boolean frontRightDriveInverted = false; // might be the problem
   public static final boolean frontRightSteerInverted = false; // might be the problem
   public static final boolean frontRightEncoderInverted = true; // might be the problem
-  public static final double frontRightEncoderOffsetRotations = 0.398;
+  public static final double frontRightEncoderOffsetRotations =  0.128906 ;//
+
+  public static final int rearRightDriveMotorId = 5;
+  public static final int rearRightSteerMotorId = 6;
+  public static final int rearRightEncoderId = 5;
+  public static final boolean rearRightDriveInverted = false; // might be the problem
+  public static final boolean rearRightSteerInverted = false; // might be the problem
+  public static final boolean rearRightEncoderInverted = true; // might be t he problem
+  public static final double rearRightEncoderOffsetRotations = 0.299805 ;//
 
   public static final int rearLeftDriveMotorId = 7;
   public static final int rearLeftSteerMotorId = 8;
@@ -38,15 +46,9 @@ public final class Constants {
   public static final boolean rearLeftDriveInverted = false; // might be the problem
   public static final boolean rearLeftSteerInverted = false; // might be the problem
   public static final boolean rearLeftEncoderInverted = false; // might be the problem
-  public static final double rearLeftEncoderOffsetRotations = -0.260;
+  public static final double rearLeftEncoderOffsetRotations = 0.231445 ;  //
 
-  public static final int rearRightDriveMotorId = 5;
-  public static final int rearRightSteerMotorId = 6;
-  public static final int rearRightEncoderId = 5;
-  public static final boolean rearRightDriveInverted = false; // might be the problem
-  public static final boolean rearRightSteerInverted = false; // might be the problem
-  public static final boolean rearRightEncoderInverted = true; // might be the problem
-  public static final double rearRightEncoderOffsetRotations = 0.022;
+
 
   public static final class OperatorConstants {
     public static final int kDriverControllerPort = 0;

@@ -101,6 +101,7 @@ public class SwerveModule {
           + ", turn=" + turnStatus + ", encoder=" + encoderStatus
           + ", signals=" + signalStatus, false);
     }
+    System.out.println(encoder.getAbsolutePosition().getValueAsDouble());
     return success;
   }
 
@@ -173,6 +174,7 @@ public class SwerveModule {
     lastTargetAngle = moduleState.angle;
     setAngle(angle, moduleState.angle);
     setSpeed(moduleState.speedMetersPerSecond);
+    System.out.println(name + " " + encoder.getAbsolutePosition().getValueAsDouble());
   }
 
   private SwerveModuleState optimizeState(
