@@ -34,7 +34,7 @@ public class Swerve extends SubsystemBase {
   public Swerve() {
     var yawStatus = gyro.getYaw().setUpdateFrequency(
         Constants.SwerveConstants.kSensorUpdateFrequencyHz);
-    if (!yawStatus.isOK()) {
+    if (!yawStatus.isOK()) { // if broken, print a warning to the driver station
       DriverStation.reportWarning("Pigeon yaw update configuration failed: " + yawStatus, false);
     }
     Constants.ModuleConfiguration[] configurations = {
@@ -57,7 +57,8 @@ public class Swerve extends SubsystemBase {
     hardwareEnabled = validIds;
     if (!hardwareEnabled) {
       DriverStation.reportError(
-          "Swerve outputs disabled: CAN IDs must be 0 to 62, with unique Talon FX IDs and unique CANcoder IDs.",
+          // NO DUPLICATE CANCODER ID's, trying to stop bugs b4 they happen
+          "Swerve outputs disabled: CAN IDs must be 0 to 62, with unique Talon FX IDs and unique CANcoder IDs.", 
           false);
     }
     modules = new SwerveModule[] {
@@ -66,15 +67,18 @@ public class Swerve extends SubsystemBase {
       new SwerveModule("RearLeft", configurations[2], hardwareEnabled),
       new SwerveModule("RearRight", configurations[3], hardwareEnabled)
     };
+    // initialize odometry with zero pose and zero module positions
     SwerveModulePosition[] initialPositions = new SwerveModulePosition[modules.length];
     for (int index = 0; index < modules.length; index++) {
       initialPositions[index] = new SwerveModulePosition();
     }
+    
     Rotation2d heading = readHeading();
     odometry = new SwerveDriveOdometry(
         KINEMATICS, heading != null ? heading : new Rotation2d(), initialPositions);
   }
 
+  // drive the swerve with the given robot relative speeds 
   public void drive(ChassisSpeeds robotRelativeSpeeds) {
     if (DriverStation.isDisabled() || !isReady()
         || !validGeometry() || !validSpeeds(robotRelativeSpeeds)) {
@@ -82,13 +86,14 @@ public class Swerve extends SubsystemBase {
       reportStatus();
       return;
     }
+    // store requested speed for odometry and for the smartdashboard
     commandedSpeeds = robotRelativeSpeeds;
     SwerveModuleState[] targetStates = getWheelStates(robotRelativeSpeeds);
     for (int index = 0; index < modules.length; index++) {
       modules[index].setState(targetStates[index]);
     }
   }
-
+  // drive the swerve with the given field relative speeds
   private static SwerveModuleState[] getWheelStates(ChassisSpeeds speeds) {
     double low = 0.0;
     double high = 1.0;
@@ -99,6 +104,7 @@ public class Swerve extends SubsystemBase {
       SwerveModuleState[] states = KINEMATICS.toSwerveModuleStates(
           ChassisSpeeds.discretize(limitedSpeeds, Constants.kLoopPeriodSeconds));
       double fastest = 0.0;
+      // enhanced for loop to iterate through the states and find the fastest speed
       for (SwerveModuleState state : states) {
         fastest = Math.max(fastest, Math.abs(state.speedMetersPerSecond));
       }
@@ -115,7 +121,7 @@ public class Swerve extends SubsystemBase {
     }
     return best;
   }
-
+  
   public void driveFieldRelative(ChassisSpeeds fieldRelativeSpeeds) {
     Rotation2d heading = readHeading();
     if (heading == null || !validSpeeds(fieldRelativeSpeeds)) {
@@ -128,6 +134,7 @@ public class Swerve extends SubsystemBase {
   private Rotation2d readHeading() {
     var yaw = gyro.getYaw().refresh();
     double yawDegrees = yaw.getValueAsDouble();
+    // check if the gyro reading is valid and not too old
     if (!yaw.getStatus().isOK()
         || !(yaw.getTimestamp().getLatency() <= Constants.SwerveConstants.kMaxSensorAgeSeconds)
         || !Double.isFinite(yawDegrees)) {
@@ -154,13 +161,14 @@ public class Swerve extends SubsystemBase {
     headingResetPending = true;
     odometryInitialized = false;
   }
-
+  // return true if the swerve is stopped very self explanatory
   public boolean isStopped() {
     if (!isReady() || commandedSpeeds.vxMetersPerSecond != 0.0
         || commandedSpeeds.vyMetersPerSecond != 0.0
         || commandedSpeeds.omegaRadiansPerSecond != 0.0) {
       return false;
     }
+    // enhanced for loop to iterate through the modules and check if they are stopped
     for (SwerveModule module : modules) {
       double speed = module.getSpeed();
       if (!Double.isFinite(speed)
@@ -192,7 +200,7 @@ public class Swerve extends SubsystemBase {
     if (modulesReady == previousModulesReady) {
       return;
     }
-    // more logs
+    // more logs when modules are ready
     if (modulesReady) {
       DriverStation.reportWarning("Swerve module health restored.", false);
     } else {
@@ -200,7 +208,7 @@ public class Swerve extends SubsystemBase {
     }
     previousModulesReady = modulesReady;
   }
-
+  // stop the swerve and set commanded speeds to zero/stop them
   public void stop() {
     commandedSpeeds = new ChassisSpeeds();
     for (SwerveModule module : modules) {
@@ -254,6 +262,7 @@ public class Swerve extends SubsystemBase {
         return;
       }
     }
+    // if the odometry has not been initialized, reset it with the current heading and module positions
     if (!odometryInitialized) {
       Pose2d pose = odometry.getPoseMeters();
       if (headingResetPending) {
@@ -266,7 +275,7 @@ public class Swerve extends SubsystemBase {
       odometry.update(heading, positions);
     }
   }
-
+  // update the dashboard with the current commanded speeds, volts, hardware status, and module status
   private void updateDashboard() {
     telemetryCycleCount++;
     if (telemetryCycleCount % 5 != 0) {

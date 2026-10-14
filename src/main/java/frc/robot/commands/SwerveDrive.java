@@ -5,6 +5,7 @@ import edu.wpi.first.math.filter.SlewRateLimiter;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.Constants;
@@ -24,7 +25,9 @@ public class SwerveDrive extends Command {
   private final SlewRateLimiter rotationLimiter =
       new SlewRateLimiter(Constants.OperatorConstants.kRotationSlewRatePerSecond);
 
-  private boolean fieldRelativeMode;
+  private boolean fieldRelativeMode = true;
+  private double lastTranslationUpdateSeconds = Timer.getFPGATimestamp();
+
 
   public SwerveDrive(
       Swerve swerve,
@@ -51,15 +54,8 @@ public class SwerveDrive extends Command {
     double forward = forwardSupplier.getAsDouble();
     double leftStickStrafe = strafeSupplier.getAsDouble();
     double rightStickX = rotationSupplier.getAsDouble();
-    double strafe;
-    double rotation;
-    if (fieldRelativeMode) {
-      strafe = leftStickStrafe;
-      rotation = rightStickX;
-    } else {
-      strafe = rightStickX;
-      rotation = 0.0;
-    }
+    double strafe = leftStickStrafe;
+    double rotation = rightStickX;
     boolean controllerConnected = controllerConnectedSupplier.getAsBoolean();
 
     SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
@@ -93,8 +89,9 @@ public class SwerveDrive extends Command {
 
   public void toggleDriveMode() {
     if (controlsNeutral() && swerve.isStopped()) {
+      // chceck if we are in robot relative driving and the swerve doesn't have heading
       if (!fieldRelativeMode && !swerve.hasHeading()) {
-        DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false);
+        DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false); // complain
         return;
       }
       fieldRelativeMode = !fieldRelativeMode;
@@ -103,7 +100,7 @@ public class SwerveDrive extends Command {
       DriverStation.reportWarning("Center the sticks and stop before changing drive mode.", false);
     }
   }
-
+  // check if the controls are neutral (centered joysticks + connected controller)
   public boolean controlsNeutral() {
     double forward = forwardSupplier.getAsDouble();
     double strafe = strafeSupplier.getAsDouble();
@@ -113,7 +110,7 @@ public class SwerveDrive extends Command {
         && Math.hypot(forward, strafe) <= Constants.OperatorConstants.kDeadband
         && Math.abs(rotation) <= Constants.OperatorConstants.kDeadband;
   }
-
+  // get the speeds based on the inputs and apply deadband and slew rate limiting (for Junseo)
   private ChassisSpeeds getSpeeds(double forward, double strafe, double rotation) {
     double deadband = Constants.OperatorConstants.kDeadband;
     forward = MathUtil.clamp(forward, -1.0, 1.0);
@@ -123,6 +120,7 @@ public class SwerveDrive extends Command {
       forward = 0.0;
       strafe = 0.0;
     } else {
+      // scale the forward and strafe values to account for the deadband
       double scale = MathUtil.applyDeadband(Math.min(stickMagnitude, 1.0), deadband)
           / stickMagnitude;
       forward *= scale;
@@ -130,15 +128,19 @@ public class SwerveDrive extends Command {
     }
     rotation = MathUtil.applyDeadband(MathUtil.clamp(rotation, -1.0, 1.0), deadband);
 
+    // apply slew rate limiting to the translation (forward and strafe) inputs
     Translation2d requestedTranslation = new Translation2d(forward, strafe);
     Translation2d change = requestedTranslation.minus(limitedTranslation);
-    double maxChange = Constants.OperatorConstants.kTranslationSlewRatePerSecond
-        * Constants.kLoopPeriodSeconds;
+    double nowSeconds = Timer.getFPGATimestamp();
+    double elapsedSeconds = Math.max(0.0, nowSeconds - lastTranslationUpdateSeconds);
+    double maxChange =
+        Constants.OperatorConstants.kTranslationSlewRatePerSecond * elapsedSeconds;
     if (change.getNorm() <= maxChange) {
       limitedTranslation = requestedTranslation;
     } else {
       limitedTranslation = limitedTranslation.plus(change.times(maxChange / change.getNorm()));
     }
+    lastTranslationUpdateSeconds = nowSeconds;
     return new ChassisSpeeds(
         limitedTranslation.getX()
             * Constants.OperatorConstants.kForwardSpeedScale
@@ -150,12 +152,13 @@ public class SwerveDrive extends Command {
             * Constants.OperatorConstants.kRotationSpeedScale
             * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
   }
-
+  // 
   private void resetLimiters() {
     limitedTranslation = new Translation2d();
+    lastTranslationUpdateSeconds = Timer.getFPGATimestamp();
     rotationLimiter.reset(0.0);
   }
-
+  // more logs regarding the requested speeds to the dashboard for debugging 
   private static void updateDashboard(ChassisSpeeds requestedSpeeds) {
     SmartDashboard.putNumber(
         "Drive/RequestedVxMetersPerSecond", requestedSpeeds.vxMetersPerSecond);
@@ -164,7 +167,7 @@ public class SwerveDrive extends Command {
     SmartDashboard.putNumber(
         "Drive/RequestedOmegaRadiansPerSecond", requestedSpeeds.omegaRadiansPerSecond);
   }
-
+  
   @Override
   public void end(boolean interrupted) {
     swerve.stop();

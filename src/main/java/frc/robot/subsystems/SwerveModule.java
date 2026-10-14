@@ -51,6 +51,9 @@ public class SwerveModule {
     this.name = name;
     this.configuration = configuration;
     turnController.enableContinuousInput(-Math.PI, Math.PI);
+    turnController.setTolerance(
+        Constants.SwerveConstants.kTurnToleranceRad,
+        Constants.SwerveConstants.kTurnSettledVelocityRadPerSec);
     if (hardwareEnabled && configuration != null && configuration.hasValidIds()) {
       driveMotor = new TalonFX(configuration.driveCanId(), Constants.SwerveConstants.kCanBus);
       turnMotor = new TalonFX(configuration.turnCanId(), Constants.SwerveConstants.kCanBus);
@@ -101,7 +104,10 @@ public class SwerveModule {
           + ", turn=" + turnStatus + ", encoder=" + encoderStatus
           + ", signals=" + signalStatus, false);
     }
-    System.out.println(encoder.getAbsolutePosition().getValueAsDouble());
+    DriverStation.reportWarning(
+        name + " CANcoder absolute rotations: "
+            + encoder.getAbsolutePosition().getValueAsDouble(),
+        false);
     return success;
   }
 
@@ -156,7 +162,7 @@ public class SwerveModule {
       return;
     }
     if (!turnControllerInitialized) {
-      turnController.reset(angle.getRadians());
+      resetTurnController(angle);
       lastTargetAngle = angle;
       turnOptimizationReversed = false;
       turnControllerInitialized = true;
@@ -174,7 +180,10 @@ public class SwerveModule {
     lastTargetAngle = moduleState.angle;
     setAngle(angle, moduleState.angle);
     setSpeed(moduleState.speedMetersPerSecond);
-    System.out.println(name + " " + encoder.getAbsolutePosition().getValueAsDouble());
+    DriverStation.reportWarning(
+        name + " CANcoder absolute rotations: "
+            + encoder.getAbsolutePosition().getValueAsDouble(),
+        false);
   }
 
   private SwerveModuleState optimizeState(
@@ -203,11 +212,10 @@ public class SwerveModule {
         turnController.calculate(angle.getRadians(), targetAngle.getRadians());
     output += Constants.SwerveConstants.kTurnVelocityDamping
         * (turnController.getSetpoint().velocity - turnRate);
-    if (Math.abs(targetAngle.minus(angle).getRadians())
-        <= Constants.SwerveConstants.kTurnToleranceRad
+    if (turnController.atSetpoint()
         && Math.abs(turnRate) <= Constants.SwerveConstants.kTurnSettledVelocityRadPerSec) {
       output = 0.0;
-      turnController.reset(angle.getRadians());
+      resetTurnController(angle);
     }
     turnVolts =
         finiteOrZero(
@@ -322,7 +330,7 @@ public class SwerveModule {
     turnControllerInitialized = false;
     if (angle != null) {
       lastTargetAngle = angle;
-      turnController.reset(angle.getRadians());
+      resetTurnController(angle);
     }
     turnVolts = 0.0;
     if (turnMotor != null) {
@@ -421,11 +429,16 @@ public class SwerveModule {
     double offsetRotations = configuration.encoderOffsetRotations();
     if (!isFresh(absolutePosition)
         || !Double.isFinite(rotations)
-        || !Double.isFinite(offsetRotations)) {
+        || !Double.isFinite(offsetRotations)
+        || !isPositiveFinite(Constants.SwerveConstants.kCancoderCountsPerRotation)) {
       return null;
     }
+    double correctedRotations = rotations - offsetRotations;
+    correctedRotations = Math.rint(
+        correctedRotations * Constants.SwerveConstants.kCancoderCountsPerRotation)
+        / Constants.SwerveConstants.kCancoderCountsPerRotation;
     return Rotation2d.fromRadians(MathUtil.angleModulus(
-        (rotations - offsetRotations) * 2.0 * Math.PI));
+        correctedRotations * 2.0 * Math.PI));
   }
 
   public double getSpeed() {
@@ -451,6 +464,14 @@ public class SwerveModule {
       return Double.NaN;
     }
     return velocity.getValueAsDouble() * 2.0 * Math.PI;
+  }
+
+  private void resetTurnController(Rotation2d angle) {
+    double turnRate = getTurnRateRadPerSec();
+    if (!Double.isFinite(turnRate)) {
+      turnRate = 0.0;
+    }
+    turnController.reset(angle.getRadians(), turnRate);
   }
 
   private boolean validWheelConfig() {

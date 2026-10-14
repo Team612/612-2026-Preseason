@@ -5,20 +5,21 @@ import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 
 public final class Constants {
-  public static final double kLoopPeriodSeconds = 0.02;
-  public static final double trackWidth = 0.550;
-  public static final double wheelBase = 0.555;
+  public static final double kLoopPeriodSeconds = 0.02; // 20 milliseconds loop for robot code
+  public static final double trackWidth = 0.550; // needs to be measured and verified
+  public static final double wheelBase = 0.555; // needs to be measured and verified
 
+  
   public static final SwerveDriveKinematics swerveKinematics =
       new SwerveDriveKinematics(
-          new Translation2d(wheelBase / 2.0, trackWidth / 2.0),
-          new Translation2d(wheelBase / 2.0, -trackWidth / 2.0),
-          new Translation2d(-wheelBase / 2.0, trackWidth / 2.0),
-          new Translation2d(-wheelBase / 2.0, -trackWidth / 2.0));
+          new Translation2d(wheelBase / 2.0, trackWidth / 2.0), // Front left
+          new Translation2d(wheelBase / 2.0, -trackWidth / 2.0), // Front right
+          new Translation2d(-wheelBase / 2.0, trackWidth / 2.0), // Rear left
+          new Translation2d(-wheelBase / 2.0, -trackWidth / 2.0)); // Rear right
 
   public static final int frontLeftDriveMotorId = 1;
   public static final int frontLeftSteerMotorId = 2;
-  public static final int frontLeftEncoderId = 1;
+  public static final int frontLeftEncoderId = 1; 
   public static final boolean frontLeftDriveInverted = false; // might be the problem
   public static final boolean frontLeftSteerInverted = false; // might be the problem
   public static final boolean frontLeftEncoderInverted = false; // might be the problem
@@ -38,7 +39,7 @@ public final class Constants {
   public static final boolean rearRightDriveInverted = false; // might be the problem
   public static final boolean rearRightSteerInverted = false; // might be the problem
   public static final boolean rearRightEncoderInverted = true; // might be t he problem
-  public static final double rearRightEncoderOffsetRotations = -0.201416 ;//
+  public static final double rearRightEncoderOffsetRotations = -0.201416; // please verify
 
   public static final int rearLeftDriveMotorId = 7;
   public static final int rearLeftSteerMotorId = 8;
@@ -46,18 +47,17 @@ public final class Constants {
   public static final boolean rearLeftDriveInverted = false; // might be the problem
   public static final boolean rearLeftSteerInverted = false; // might be the problem
   public static final boolean rearLeftEncoderInverted = false; // might be the problem
-  public static final double rearLeftEncoderOffsetRotations = 0.231445 ;  //
+  public static final double rearLeftEncoderOffsetRotations = 0.231445 ;  // please verify
 
-
-
+  
   public static final class OperatorConstants {
-    public static final int kDriverControllerPort = 0;
-    public static final double kDeadband = 0.10;
-    public static final double kForwardSpeedScale = 1.0;
-    public static final double kStrafeSpeedScale = 1.0;
-    public static final double kRotationSpeedScale = 1.0;
-    public static final double kTranslationSlewRatePerSecond = 3.0;
-    public static final double kRotationSlewRatePerSecond = 3.0;
+    public static final int kDriverControllerPort = 0; // Driver station controller port
+    public static final double kDeadband = 0.10; // Deadband for joystick inputs
+    public static final double kForwardSpeedScale = 1.0; // Scale factor for forward/backward speed
+    public static final double kStrafeSpeedScale = 1.0; // Scale factor for strafing speed
+    public static final double kRotationSpeedScale = 1.0; // Scale factor for rotation speed
+    public static final double kTranslationSlewRatePerSecond = 1.0; // Maximum normalized translation change per second
+    public static final double kRotationSlewRatePerSecond = 1.0; // Maximum normalized rotation change per second
 
     private OperatorConstants() {}
   }
@@ -65,9 +65,9 @@ public final class Constants {
   public static final class SwerveConstants {
     public static final CANBus kCanBus = CANBus.roboRIO();
     public static final int kPigeonCanId = 0; // should be right
-    public static final double kWheelBaseMeters = wheelBase;
-    public static final double kTrackWidthMeters = trackWidth;
-    public static final double kWheelDiameterMeters = 0.0889;
+    public static final double kWheelBaseMeters = wheelBase; 
+    public static final double kTrackWidthMeters = trackWidth; 
+    public static final double kWheelDiameterMeters = 0.0889; // check on this
     public static final double kDriveReduction = 6.75;
     public static final double kMaxSpeedMetersPerSecond = 2.0;
     public static final double kMinimumModuleSpeedMetersPerSecond = 0.03;
@@ -80,23 +80,27 @@ public final class Constants {
     public static final double kMaxDriveCorrectionVolts = 1.0;
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
     public static final boolean kEnableDriveVelocityCorrection = true;
-    public static final double kTurnP = 0.5;
+    public static final double kTurnP = 0.5; // works well at the moment
     public static final double kTurnI = 0.0;
     public static final double kTurnD = 0.0;
     public static final double kTurnVelocityDamping = 0.15;
     public static final double kTurnSettledVelocityRadPerSec = 0.1;
     public static final double kTurnOptimizationHysteresisRad = Math.toRadians(5.0);
-    public static final double kTurnToleranceRad = Math.toRadians(1.0);
+    public static final double kTurnToleranceFraction = 0.03;
+    public static final double kTurnToleranceRad =
+        Math.toRadians(90.0) * kTurnToleranceFraction;
+    public static final double kCancoderCountsPerRotation = 4096.0;
     public static final double kSensorUpdateFrequencyHz = 100.0;
     public static final double kMaxSensorAgeSeconds = 0.1;
     public static final double kMaxTurnRadPerSec = Math.PI * 2.0;
     public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
-    public static final double kMaxTurnVolts = 4.0;
+    public static final double kMaxTurnVolts = 4.0; // guess
     public static final double kDriveSupplyLimitAmps = 12.0; // guess based on the amount of volts our battery got
     public static final double kDriveStatorLimitAmps = 12.0; // guess
     public static final double kTurnSupplyLimitAmps = 12.0;  // guess
     public static final double kTurnStatorLimitAmps = 12.0; // guess
-
+    
+    // 
     public static final ModuleConfiguration kFrontLeft =
         new ModuleConfiguration(
             frontLeftDriveMotorId, frontLeftSteerMotorId, frontLeftEncoderId,
