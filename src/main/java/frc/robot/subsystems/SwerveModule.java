@@ -212,10 +212,9 @@ public class SwerveModule {
         turnController.calculate(angle.getRadians(), targetAngle.getRadians());
     output += Constants.SwerveConstants.kTurnVelocityDamping
         * (turnController.getSetpoint().velocity - turnRate);
-    if (turnController.atSetpoint()
+    if (turnController.atGoal()
         && Math.abs(turnRate) <= Constants.SwerveConstants.kTurnSettledVelocityRadPerSec) {
       output = 0.0;
-      resetTurnController(angle);
     }
     turnVolts =
         finiteOrZero(
