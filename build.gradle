@@ -71,14 +71,6 @@ dependencies {
     simulationRelease wpi.sim.enableRelease()
 }
 
-tasks.named('test') {
-    enabled = false
-}
-
-tasks.named('check') {
-    setDependsOn([])
-}
-
 // Simulation configuration (e.g. environment variables).
 wpi.sim.addGui().defaultEnabled = true
 wpi.sim.addDriverstation()

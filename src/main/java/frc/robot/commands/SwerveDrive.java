@@ -1,8 +1,5 @@
 package frc.robot.commands;
 
-import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.filter.SlewRateLimiter;
-import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
@@ -14,21 +11,32 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 
+/** Reads driver input; only the translation reference frame changes between modes. */
 public class SwerveDrive extends Command {
+  // Subsystem controlled exclusively while this command is scheduled.
   private final Swerve swerve;
+  // Reads normalized forward/backward input from the controller.
   private final DoubleSupplier forwardSupplier;
+  // Reads normalized left/right translation input in both driving modes.
   private final DoubleSupplier strafeSupplier;
+  // Reads normalized counterclockwise/clockwise rotation input in both modes.
   private final DoubleSupplier rotationSupplier;
+  // Reports whether controller input can be trusted.
   private final BooleanSupplier controllerConnectedSupplier;
 
-  private Translation2d limitedTranslation = new Translation2d();
-  private final SlewRateLimiter rotationLimiter =
-      new SlewRateLimiter(Constants.OperatorConstants.kRotationSlewRatePerSecond);
-
+  // Stores the previous inputs for deadband shaping and acceleration limits.
+  private final DriveInputLimiter inputLimiter = new DriveInputLimiter();
+  // FPGA timestamp used for elapsed time and missed-loop detection.
+  private double lastLimiterTimestampSeconds;
+  // True at startup: translate relative to field heading rather than the robot nose.
   private boolean fieldRelativeMode = true;
-  private double lastTranslationUpdateSeconds = Timer.getFPGATimestamp();
+  // Prevents held sticks from restarting motion after enable, a fault, or a long loop gap.
+  private boolean waitingForNeutral = true;
 
-
+  /**
+   * Receives axis readers and reserves the drivetrain so competing drive commands cannot run
+   * together.
+   */
   public SwerveDrive(
       Swerve swerve,
       DoubleSupplier forwardSupplier,
@@ -43,37 +51,54 @@ public class SwerveDrive extends Command {
     addRequirements(this.swerve);
   }
 
+  /** Stops previous output and requires neutral sticks whenever this command starts. */
   @Override
   public void initialize() {
-    swerve.stop();
-    resetLimiters();
+    stopAndRequireNeutral();
   }
 
+  // check sensors and shape inputs
   @Override
   public void execute() {
     double forward = forwardSupplier.getAsDouble();
-    double leftStickStrafe = strafeSupplier.getAsDouble();
-    double rightStickX = rotationSupplier.getAsDouble();
-    double strafe = leftStickStrafe;
-    double rotation = rightStickX;
+    // The left stick translates and the right stick rotates in BOTH modes please tell me if this needs ot be adjusted
+    double strafe = strafeSupplier.getAsDouble();
+    double rotation = rotationSupplier.getAsDouble();
     boolean controllerConnected = controllerConnectedSupplier.getAsBoolean();
 
+
+    // add to smartdashbaord
     SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
     SmartDashboard.putBoolean("Drive/ControllerConnected", controllerConnected);
     SmartDashboard.putNumber("Drive/ForwardInput", forward);
     SmartDashboard.putNumber("Drive/StrafeInput", strafe);
     SmartDashboard.putNumber("Drive/RotationInput", rotation);
-    SmartDashboard.putNumber("Drive/LeftStickStrafeInput", leftStickStrafe);
-    SmartDashboard.putNumber("Drive/RightStickXInput", rightStickX);
 
+    // if the driverstation is not in teleop or the controller isnt connceted or swerve is not ready or the rest, stop and wait for neutral joystick
     if (!DriverStation.isTeleopEnabled() || !controllerConnected || !swerve.isReady()
         || (fieldRelativeMode && !swerve.hasHeading())
         || !Double.isFinite(forward)
         || !Double.isFinite(strafe)
         || !Double.isFinite(rotation)) {
+      stopAndRequireNeutral();
+      return;
+    }
+
+    // prevent jumps
+    if (Timer.getFPGATimestamp() - lastLimiterTimestampSeconds
+        >= Constants.SwerveConstants.kMotorSafetyExpirationSeconds) {
+      stopAndRequireNeutral();
+      return;
+    }
+
+    if (waitingForNeutral) {
       resetLimiters();
-      updateDashboard(new ChassisSpeeds());
       swerve.stop();
+      if (controlsNeutral()) {
+        waitingForNeutral = false;
+      }
+      SmartDashboard.putBoolean("Drive/WaitingForNeutral", waitingForNeutral);
+      updateDashboard(new ChassisSpeeds());
       return;
     }
 
@@ -81,17 +106,22 @@ public class SwerveDrive extends Command {
     updateDashboard(requestedSpeeds);
 
     if (fieldRelativeMode) {
-      swerve.driveFieldRelative(requestedSpeeds);
+      if (!swerve.driveFieldRelative(requestedSpeeds)) {
+        stopAndRequireNeutral();
+      }
     } else {
-      swerve.drive(requestedSpeeds);
+      if (!swerve.drive(requestedSpeeds)) {
+        stopAndRequireNeutral();
+      }
     }
   }
 
+  // to look over again, 
   public void toggleDriveMode() {
     if (controlsNeutral() && swerve.isStopped()) {
-      // chceck if we are in robot relative driving and the swerve doesn't have heading
+      // Robot-relative driving can still work when the gyro is unavailable.
       if (!fieldRelativeMode && !swerve.hasHeading()) {
-        DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false); // complain
+        DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false);
         return;
       }
       fieldRelativeMode = !fieldRelativeMode;
@@ -100,7 +130,8 @@ public class SwerveDrive extends Command {
       DriverStation.reportWarning("Center the sticks and stop before changing drive mode.", false);
     }
   }
-  // check if the controls are neutral (centered joysticks + connected controller)
+
+  // Checks controller connection and both deadbands before changing mode or resetting heading (should help)
   public boolean controlsNeutral() {
     double forward = forwardSupplier.getAsDouble();
     double strafe = strafeSupplier.getAsDouble();
@@ -110,55 +141,35 @@ public class SwerveDrive extends Command {
         && Math.hypot(forward, strafe) <= Constants.OperatorConstants.kDeadband
         && Math.abs(rotation) <= Constants.OperatorConstants.kDeadband;
   }
-  // get the speeds based on the inputs and apply deadband and slew rate limiting (for Junseo)
-  private ChassisSpeeds getSpeeds(double forward, double strafe, double rotation) {
-    double deadband = Constants.OperatorConstants.kDeadband;
-    forward = MathUtil.clamp(forward, -1.0, 1.0);
-    strafe = MathUtil.clamp(strafe, -1.0, 1.0);
-    double stickMagnitude = Math.hypot(forward, strafe);
-    if (stickMagnitude <= deadband) {
-      forward = 0.0;
-      strafe = 0.0;
-    } else {
-      // scale the forward and strafe values to account for the deadband
-      double scale = MathUtil.applyDeadband(Math.min(stickMagnitude, 1.0), deadband)
-          / stickMagnitude;
-      forward *= scale;
-      strafe *= scale;
-    }
-    rotation = MathUtil.applyDeadband(MathUtil.clamp(rotation, -1.0, 1.0), deadband);
 
-    // apply slew rate limiting to the translation (forward and strafe) inputs
-    Translation2d requestedTranslation = new Translation2d(forward, strafe);
-    Translation2d change = requestedTranslation.minus(limitedTranslation);
-    double nowSeconds = Timer.getFPGATimestamp();
-    double elapsedSeconds = Math.max(0.0, nowSeconds - lastTranslationUpdateSeconds);
-    double maxChange =
-        Constants.OperatorConstants.kTranslationSlewRatePerSecond * elapsedSeconds;
-    if (change.getNorm() <= maxChange) {
-      limitedTranslation = requestedTranslation;
-    } else {
-      limitedTranslation = limitedTranslation.plus(change.times(maxChange / change.getNorm()));
-    }
-    lastTranslationUpdateSeconds = nowSeconds;
-    return new ChassisSpeeds(
-        limitedTranslation.getX()
-            * Constants.OperatorConstants.kForwardSpeedScale
-            * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
-        limitedTranslation.getY()
-            * Constants.OperatorConstants.kStrafeSpeedScale
-            * Constants.SwerveConstants.kMaxSpeedMetersPerSecond,
-        rotationLimiter.calculate(rotation)
-            * Constants.OperatorConstants.kRotationSpeedScale
-            * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
+  
+  // Uses a shared elapsed time for translation and rotation, before the field-to-robot conversio
+  private ChassisSpeeds getSpeeds(double forward, double strafe, double rotation) {
+    // Use one elapsed time for both limiters, including scheduler 
+    // These inputs stay in the selected driving frame until after rate limiting
+    double now = Timer.getFPGATimestamp();
+    double elapsedSeconds = Math.max(0.0, now - lastLimiterTimestampSeconds);
+    lastLimiterTimestampSeconds = now;
+    return inputLimiter.calculate(forward, strafe, rotation, elapsedSeconds);
   }
-  // 
+
+  //Stops immediately after a fault
+  
+  private void stopAndRequireNeutral() {
+    waitingForNeutral = true;
+    swerve.stop();
+    resetLimiters();
+    SmartDashboard.putBoolean("Drive/WaitingForNeutral", true);
+    updateDashboard(new ChassisSpeeds());
+  }
+
+  // Clears input history and restarts the elapsed time clock for my sanity
   private void resetLimiters() {
-    limitedTranslation = new Translation2d();
-    lastTranslationUpdateSeconds = Timer.getFPGATimestamp();
-    rotationLimiter.reset(0.0);
+    inputLimiter.reset();
+    lastLimiterTimestampSeconds = Timer.getFPGATimestamp();
   }
-  // more logs regarding the requested speeds to the dashboard for debugging 
+
+  /** Publishes the requested chassis velocities for driver feedback and problemo debugging */
   private static void updateDashboard(ChassisSpeeds requestedSpeeds) {
     SmartDashboard.putNumber(
         "Drive/RequestedVxMetersPerSecond", requestedSpeeds.vxMetersPerSecond);
@@ -167,10 +178,10 @@ public class SwerveDrive extends Command {
     SmartDashboard.putNumber(
         "Drive/RequestedOmegaRadiansPerSecond", requestedSpeeds.omegaRadiansPerSecond);
   }
-  
+
+  // Stops the drivetrain when this command finishes or another command interrupts it
   @Override
   public void end(boolean interrupted) {
-    swerve.stop();
-    resetLimiters();
+    stopAndRequireNeutral();
   }
 }
