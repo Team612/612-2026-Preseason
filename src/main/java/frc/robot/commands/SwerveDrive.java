@@ -106,7 +106,7 @@ public class SwerveDrive extends Command {
     updateDashboard(requestedSpeeds);
 
     if (fieldRelativeMode) {
-      if (!swerve.driveFieldRelative(requestedSpeeds)) {
+      if (!swerve.driveOperatorRelative(requestedSpeeds)) {
         stopAndRequireNeutral();
       }
     } else {

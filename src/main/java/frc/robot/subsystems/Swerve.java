@@ -5,7 +5,19 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
-import edu.wpi.first.math.kinematics.SwerveDriveOdometry;
+import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
+import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.numbers.N1;
+import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog;
+import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import com.ctre.phoenix6.SignalLogger;
+import frc.robot.Telemetry;
+import java.util.Optional;
+import static edu.wpi.first.units.Units.*;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -27,8 +39,13 @@ public class Swerve extends SubsystemBase {
   // Pigeon yaw for field-relative odometry
   private final Pigeon2 gyro =
       new Pigeon2(Constants.SwerveConstants.kPigeonCanId, Constants.SwerveConstants.kCanBus);
-  // Integrates measured wheel travel and yaw doesnt fix slipping wheels
-  private final SwerveDriveOdometry odometry;
+  // Estimates pose from wheel travel, yaw, and optional vision measurements.
+  private final SwerveDrivePoseEstimator odometry;
+  private final Telemetry telemetry = new Telemetry(Constants.SwerveConstants.kMaxSpeedMetersPerSecond);
+  private double lastTelemetryTimestamp;
+  private boolean characterizationFailed;
+  private boolean operatorPerspectiveApplied;
+  private Rotation2d operatorPerspective = Rotation2d.kZero;
   // Copy of the requested robot-relative velocity, used for stop checks and telemetry.
   private ChassisSpeeds commandedSpeeds = new ChassisSpeeds();
   // Divides the main loop rate by five for dashboard update frequecy
@@ -36,7 +53,7 @@ public class Swerve extends SubsystemBase {
 
   // True after wheel positions have been synced with current odometry ref
   private boolean odometryInitialized;
-  // Requests a zero pose heading on the next valid odom update (non valid updates exist because of lying bastard sensors)
+  // Applies the driver heading reset on the next valid odometry update.
   private boolean headingResetPending;
   // Previous status
   private boolean previousModulesReady = true;
@@ -98,7 +115,7 @@ public class Swerve extends SubsystemBase {
     } else {
       initialHeading = new Rotation2d();
     }
-    odometry = new SwerveDriveOdometry(KINEMATICS, initialHeading, initialPositions);
+    odometry = new SwerveDrivePoseEstimator(KINEMATICS, initialHeading, initialPositions, new Pose2d());
   }
 
   
@@ -170,6 +187,146 @@ public class Swerve extends SubsystemBase {
     return drive(ChassisSpeeds.fromFieldRelativeSpeeds(fieldRelativeSpeeds, heading));
   }
 
+  /** Driver translation is relative to the alliance wall; autonomous uses field coordinates. */
+  public boolean driveOperatorRelative(ChassisSpeeds speeds) {
+    if (!validSpeeds(speeds)) {
+      stop();
+      return false;
+    }
+    var translation = new edu.wpi.first.math.geometry.Translation2d(
+        speeds.vxMetersPerSecond, speeds.vyMetersPerSecond).rotateBy(operatorPerspective);
+    return driveFieldRelative(new ChassisSpeeds(
+        translation.getX(), translation.getY(), speeds.omegaRadiansPerSecond));
+  }
+
+  public boolean pointWheelsAt(Rotation2d direction) {
+    return pointWheels(new Rotation2d[] {direction, direction, direction, direction});
+  }
+
+  /** Points wheels outward along the chassis diagonals to resist translation. */
+  public boolean brake() {
+    double angle = Math.atan2(Constants.trackWidth, Constants.wheelBase);
+    return pointWheels(new Rotation2d[] {
+        Rotation2d.fromRadians(angle), Rotation2d.fromRadians(-angle),
+        Rotation2d.fromRadians(-angle), Rotation2d.fromRadians(angle)});
+  }
+
+  private boolean pointWheels(Rotation2d[] angles) {
+    commandedSpeeds = new ChassisSpeeds();
+    if (DriverStation.isDisabled() || !isReady()) {
+      stop();
+      return false;
+    }
+    for (int i = 0; i < modules.length; i++) {
+      if (!modules[i].pointAt(angles[i])) {
+        stop();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** FPGA timestamps are already in the WPILib estimator's time base. */
+  public void addVisionMeasurement(Pose2d pose, double timestampSeconds) {
+    if (odometryInitialized) {
+      odometry.addVisionMeasurement(pose, timestampSeconds);
+    }
+  }
+
+  public void addVisionMeasurement(Pose2d pose, double timestampSeconds, Matrix<N3, N1> stdDevs) {
+    if (odometryInitialized) {
+      odometry.addVisionMeasurement(pose, timestampSeconds, stdDevs);
+    }
+  }
+
+  public Optional<Pose2d> samplePoseAt(double timestampSeconds) {
+    return odometryInitialized ? odometry.sampleAt(timestampSeconds) : Optional.empty();
+  }
+
+  /** Test-mode-only characterization. All modules stop together on any rejected output. */
+  public Command sysId(boolean steer, boolean dynamic, SysIdRoutine.Direction direction) {
+    String name = steer ? "SwerveSteer" : "SwerveTranslation";
+    SysIdRoutineLog stateLog = new SysIdRoutineLog(name);
+    double limit = steer ? Constants.SwerveConstants.kMaxTurnVolts
+        : Constants.SwerveConstants.kMaxDriveVolts;
+    SysIdRoutine routine = new SysIdRoutine(
+        new SysIdRoutine.Config(Volts.of(1).per(Second), Volts.of(Math.min(2.0, limit)),
+            Seconds.of(Math.min(10.0, limit)), state -> {
+              stateLog.recordState(state);
+              SignalLogger.writeString(name + "_State", state.toString());
+            }),
+        new SysIdRoutine.Mechanism(voltage -> characterize(steer, voltage.in(Volts)),
+            log -> {
+              for (SwerveModule module : modules) {
+                module.logCharacterization(log, steer);
+              }
+            }, this, name));
+    Command align = steer ? Commands.none() : run(() -> {
+      if (!pointWheelsAt(Rotation2d.kZero)) {
+        characterizationFailed = true;
+      }
+    }).until(this::allWheelsForward).withTimeout(3.0);
+    return runOnce(() -> {
+      stop();
+      characterizationFailed = false;
+    }).andThen(align, (dynamic ? routine.dynamic(direction) : routine.quasistatic(direction))
+        .onlyIf(() -> !characterizationFailed && (steer || allWheelsForward())))
+        .until(() -> characterizationFailed || !DriverStation.isTestEnabled() || !isReady())
+        .finallyDo(this::stop)
+        .onlyIf(() -> DriverStation.isTestEnabled() && isStopped());
+  }
+
+  private boolean allWheelsForward() {
+    for (SwerveModule module : modules) {
+      if (!module.isPointedForward()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private void characterize(boolean steer, double volts) {
+    if (characterizationFailed || !DriverStation.isTestEnabled() || !isReady()
+        || (!steer && !allWheelsForward())) {
+      characterizationFailed = true;
+      stop();
+      return;
+    }
+    for (SwerveModule module : modules) {
+      if (!module.characterize(steer, volts)) {
+        characterizationFailed = true;
+        stop();
+        return;
+      }
+    }
+  }
+
+  private void publishTelemetry() {
+    boolean valid = odometryInitialized && isReady();
+    SmartDashboard.putBoolean("DriveState/Valid", valid);
+    if (!valid) {
+      lastTelemetryTimestamp = 0.0;
+      return;
+    }
+    SwerveModuleState[] states = new SwerveModuleState[modules.length];
+    SwerveModuleState[] targets = new SwerveModuleState[modules.length];
+    SwerveModulePosition[] positions = new SwerveModulePosition[modules.length];
+    for (int i = 0; i < modules.length; i++) {
+      states[i] = modules[i].getState();
+      targets[i] = modules[i].getTargetState();
+      positions[i] = modules[i].getPosition();
+      if (states[i] == null || positions[i] == null) {
+        SmartDashboard.putBoolean("DriveState/Valid", false);
+        lastTelemetryTimestamp = 0.0;
+        return;
+      }
+    }
+    double now = Timer.getFPGATimestamp();
+    telemetry.telemeterize(getPose(), KINEMATICS.toChassisSpeeds(states), states, targets,
+        positions, now, lastTelemetryTimestamp == 0.0 ? 0.0 : now - lastTelemetryTimestamp);
+    lastTelemetryTimestamp = now;
+  }
+
   /**
    * Returns yaw relative to the driver-defined zero, or null if smth wrong
    */
@@ -205,8 +362,7 @@ public class Swerve extends SubsystemBase {
   }
 
   /**
-   * Makes the current nose direction field forward, only with valid stationary modules and zero
-   * commands. // ai generated comment from docs also some more complaining to driver station
+   * Makes the current nose direction driver-forward for this alliance, only while stopped.
    */
   public void resetHeading() {
     if (!isStopped()) {
@@ -218,7 +374,7 @@ public class Swerve extends SubsystemBase {
       DriverStation.reportWarning("Heading reset ignored: gyro reading unavailable.", false);
       return;
     }
-    headingOffset = heading;
+    headingOffset = heading.minus(operatorPerspective);
     headingResetRequired = false;
     headingResetPending = true;
     odometryInitialized = false;
@@ -244,7 +400,7 @@ public class Swerve extends SubsystemBase {
 
   //Returns the last odometry pose
   public Pose2d getPose() {
-    return odometry.getPoseMeters();
+    return odometry.getEstimatedPosition();
   }
 
   // Requires valid CAN configuration to be right
@@ -319,6 +475,14 @@ public class Swerve extends SubsystemBase {
     updateOdometry();
     reportStatus();
     updateDashboard();
+    publishTelemetry();
+    if (!operatorPerspectiveApplied || DriverStation.isDisabled()) {
+      DriverStation.getAlliance().ifPresent(alliance -> {
+        operatorPerspective = alliance == DriverStation.Alliance.Red
+            ? Rotation2d.k180deg : Rotation2d.kZero;
+        operatorPerspectiveApplied = true;
+      });
+    }
   }
 
   /**
@@ -341,15 +505,15 @@ public class Swerve extends SubsystemBase {
     // if the odometry has not been initialized, reset it with the current heading and module
     // positions
     if (!odometryInitialized) {
-      Pose2d pose = odometry.getPoseMeters();
+      Pose2d pose = odometry.getEstimatedPosition();
       if (headingResetPending) {
-        pose = new Pose2d(pose.getTranslation(), new Rotation2d());
+        pose = new Pose2d(pose.getTranslation(), operatorPerspective);
         headingResetPending = false;
       }
       odometry.resetPosition(heading, positions, pose);
       odometryInitialized = true;
     } else {
-      odometry.update(heading, positions);
+      odometry.updateWithTime(Timer.getFPGATimestamp(), heading, positions);
     }
   }
   /** Publishes drivetrain and module telemetry every fifth loop to limit dashboard annoyances */

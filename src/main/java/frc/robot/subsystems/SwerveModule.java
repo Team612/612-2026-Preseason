@@ -2,6 +2,9 @@ package frc.robot.subsystems;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusCode;
+import com.ctre.phoenix6.SignalLogger;
+import edu.wpi.first.wpilibj.sysid.SysIdRoutineLog;
+import static edu.wpi.first.units.Units.*;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
@@ -71,6 +74,7 @@ public class SwerveModule {
   private double driveSpeedScale;
   // Drive feedforward voltage.
   private double driveBaseVolts;
+  private double previousDriveTarget;
   // Limited drive feedback correction.
   private double driveCorrectionVolts;
   // Last capped drive voltage.
@@ -123,7 +127,8 @@ public class SwerveModule {
     StatusCode encoderStatus = encoder.getConfigurator().apply(encoderConfiguration);
     StatusCode signalStatus = BaseStatusSignal.setUpdateFrequencyForAll(
         Constants.SwerveConstants.kSensorUpdateFrequencyHz,
-        encoder.getAbsolutePosition(), encoder.getVelocity(),
+        encoder.getAbsolutePosition(), encoder.getPosition(), encoder.getVelocity(),
+        driveMotor.getMotorVoltage(), turnMotor.getMotorVoltage(),
         encoder.getFault_BadMagnet(),
         driveMotor.getPosition(), driveMotor.getVelocity(),
         turnMotor.getPosition());
@@ -174,6 +179,12 @@ public class SwerveModule {
     } else {
       motorConfiguration.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
     }
+    motorConfiguration.OpenLoopRamps.VoltageOpenLoopRampPeriod = isDriveMotor
+        ? Constants.SwerveConstants.kDriveOpenLoopRampSeconds
+        : Constants.SwerveConstants.kTurnOpenLoopRampSeconds;
+    motorConfiguration.ClosedLoopRamps.VoltageClosedLoopRampPeriod = isDriveMotor
+        ? Constants.SwerveConstants.kDriveClosedLoopRampSeconds
+        : Constants.SwerveConstants.kTurnClosedLoopRampSeconds;
     motorConfiguration.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     return motorConfiguration;
   }
@@ -235,6 +246,92 @@ public class SwerveModule {
       return false;
     }
     return setSpeed(moduleState.speedMetersPerSecond);
+  }
+
+  /** Steers at zero drive speed, bypassing the normal low-speed steering hold. */
+  public boolean pointAt(Rotation2d target) {
+    if (DriverStation.isDisabled() || !isReady() || target == null
+        || !Double.isFinite(target.getRadians())) {
+      stop();
+      return false;
+    }
+    Rotation2d angle = getAngle();
+    if (!turnControllerInitialized) {
+      resetTurnController(angle);
+      turnControllerInitialized = true;
+    }
+    moving = false;
+    previousDriveTarget = 0.0;
+    targetSpeedMetersPerSecond = 0.0;
+    driveSpeedScale = driveBaseVolts = driveCorrectionVolts = driveVolts = 0.0;
+    lastTargetAngle = target;
+    return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(0.0)))
+        && setAngle(angle, target);
+  }
+
+  /** Raw voltage characterization, with the same health checks and output caps as driving. */
+  public boolean characterize(boolean steer, double volts) {
+    if (!DriverStation.isTestEnabled() || !isReady() || !Double.isFinite(volts)) {
+      stop();
+      return false;
+    }
+    if (steer) {
+      stop();
+      turnVolts = MathUtil.clamp(volts, -Constants.SwerveConstants.kMaxTurnVolts,
+          Constants.SwerveConstants.kMaxTurnVolts);
+      return acceptControlStatus(turnMotor.setControl(turnVoltageRequest.withOutput(turnVolts)));
+    }
+    if (!pointAt(Rotation2d.kZero)) {
+      return false;
+    }
+    driveVolts = MathUtil.clamp(volts, -Constants.SwerveConstants.kMaxDriveVolts,
+        Constants.SwerveConstants.kMaxDriveVolts);
+    return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(driveVolts)));
+  }
+
+  public boolean isPointedForward() {
+    Rotation2d angle = getAngle();
+    return angle != null && Math.abs(angle.getRadians()) <= Constants.SwerveConstants.kTurnToleranceRad
+        && Math.abs(getTurnRateRadPerSec()) <= Constants.SwerveConstants.kTurnSettledVelocityRadPerSec;
+  }
+
+  public SwerveModuleState getState() {
+    Rotation2d angle = getAngle();
+    double speed = getSpeed();
+    return angle == null || !Double.isFinite(speed) ? null : new SwerveModuleState(speed, angle);
+  }
+
+  public SwerveModuleState getTargetState() {
+    return new SwerveModuleState(targetSpeedMetersPerSecond, lastTargetAngle);
+  }
+
+  /** Logs actual applied voltage, SI wheel travel, and unwrapped encoder angle for SysId. */
+  public void logCharacterization(SysIdRoutineLog log, boolean steer) {
+    if (!isReady()) {
+      return;
+    }
+    if (steer) {
+      double voltage = turnMotor.getMotorVoltage().getValueAsDouble();
+      double angle = encoder.getPosition().getValueAsDouble() * 2.0 * Math.PI;
+      double velocity = getTurnRateRadPerSec();
+      log.motor(name + "Steer").voltage(Volts.of(voltage))
+          .angularPosition(Radians.of(angle)).angularVelocity(RadiansPerSecond.of(velocity));
+      SignalLogger.writeDouble(name + "/SysId/Voltage", voltage, "V");
+      SignalLogger.writeDouble(name + "/SysId/Position", angle, "rad");
+      SignalLogger.writeDouble(name + "/SysId/Velocity", velocity, "rad/s");
+    } else {
+      SwerveModulePosition position = getPosition();
+      if (position == null) {
+        return;
+      }
+      double voltage = driveMotor.getMotorVoltage().getValueAsDouble();
+      log.motor(name + "Drive").voltage(Volts.of(voltage))
+          .linearPosition(Meters.of(position.distanceMeters))
+          .linearVelocity(MetersPerSecond.of(getSpeed()));
+      SignalLogger.writeDouble(name + "/SysId/Voltage", voltage, "V");
+      SignalLogger.writeDouble(name + "/SysId/Position", position.distanceMeters, "m");
+      SignalLogger.writeDouble(name + "/SysId/Velocity", getSpeed(), "m/s");
+    }
   }
 
   // Reduces steering travel and slows misaligned wheels.
@@ -313,7 +410,15 @@ public class SwerveModule {
     driveSpeedScale =
         MathUtil.clamp(
             targetSpeed / Constants.SwerveConstants.kMaxSpeedMetersPerSecond, -1.0, 1.0);
-    driveBaseVolts = targetSpeed * Constants.SwerveConstants.kDriveKV;
+    double acceleration = (targetSpeed - previousDriveTarget) / Constants.kLoopPeriodSeconds;
+    previousDriveTarget = targetSpeed;
+    driveBaseVolts = Math.signum(targetSpeed) * Constants.SwerveConstants.kDriveKS
+        + targetSpeed * Constants.SwerveConstants.kDriveKV
+        + acceleration * Constants.SwerveConstants.kDriveKA;
+    if (!Double.isFinite(driveBaseVolts)) {
+      stop();
+      return false;
+    }
     driveCorrectionVolts = 0.0;
     if (Math.abs(targetSpeed) < 1e-6) {
       driveVolts = 0.0;
@@ -438,6 +543,7 @@ public class SwerveModule {
   // Stops both motors and clears steering history. No active angle hold.
   public void stop() {
     moving = false;
+    previousDriveTarget = 0.0;
     turnMovingAwayFromTarget = false;
     turnRateRadPerSec = Double.NaN;
     targetSpeedMetersPerSecond = 0.0;

@@ -1,5 +1,6 @@
 package frc.robot;
 
+import com.ctre.phoenix6.HootAutoReplay;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -8,6 +9,8 @@ import edu.wpi.first.wpilibj2.command.CommandScheduler;
 public class Robot extends TimedRobot {
   
   private Command autonomousCommand;
+  private final HootAutoReplay timeAndJoystickReplay = new HootAutoReplay()
+      .withTimestampReplay().withJoystickReplay();
 
   // Owns the subsystem, controller, and button bindings 
   private final RobotContainer robotContainer;
@@ -21,10 +24,11 @@ public class Robot extends TimedRobot {
   /** Runs subsystem periodic methods and scheduled commands in every robot mode. */
   @Override
   public void robotPeriodic() {
+    timeAndJoystickReplay.update();
     CommandScheduler.getInstance().run();
   }
 
-  /** Schedules the autonomous command when autonomous begins; currently it does nothing. */
+  /** Schedules the autonomous command when autonomous begins; selected on the dashboard. */
   @Override
   public void autonomousInit() {
     autonomousCommand = robotContainer.getAutonomousCommand();

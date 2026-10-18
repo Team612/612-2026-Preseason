@@ -156,6 +156,16 @@ public final class Constants {
     // Feedforward volts per m/s; requires tuning
     public static final double kDriveKV = 1.0;
 
+    // Drive feedforward: V and V/(m/s²). Zero until measured with SysId.
+    public static final double kDriveKS = 0.0;
+    public static final double kDriveKA = 0.0;
+
+    // Voltage ramp periods (seconds from 0 to 12 V). Zero preserves existing tuning.
+    public static final double kDriveOpenLoopRampSeconds = 0.0;
+    public static final double kDriveClosedLoopRampSeconds = 0.0;
+    public static final double kTurnOpenLoopRampSeconds = 0.0;
+    public static final double kTurnClosedLoopRampSeconds = 0.0;
+
     // Speed correction volts per m/s.
     public static final double kDriveP = 1.0;
 
