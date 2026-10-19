@@ -7,6 +7,7 @@ Same in robot relative and field relative
 
 Default will begin in field relative, right bumper toggles to robot relative and so forth
 
+Awaiting testing
 
 TODO: 
 encoder offsets tuning hasn't been saved unfortunately but tuning them should be easy and quick

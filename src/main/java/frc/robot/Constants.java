@@ -34,12 +34,12 @@ public final class Constants {
 
   public static final boolean frontLeftDriveInverted = false;
 
-  public static final boolean frontLeftSteerInverted = false;
+  public static final boolean frontLeftSteerInverted = true;
 
   public static final boolean frontLeftEncoderInverted = false;
 
   // Forward encoder reading in rotations, after direction correction.
-  public static final double frontLeftEncoderOffsetRotations = -0.291504;
+  public static final double frontLeftEncoderOffsetRotations = -0.365966796875;
 
   // Front right CAN IDs and directions
   public static final int frontRightDriveMotorId = 3;
@@ -48,14 +48,14 @@ public final class Constants {
 
   public static final int frontRightEncoderId = 3;
 
-  public static final boolean frontRightDriveInverted = false;
+  public static final boolean frontRightDriveInverted = true;
 
-  public static final boolean frontRightSteerInverted = false;
+  public static final boolean frontRightSteerInverted = true;
 
-  public static final boolean frontRightEncoderInverted = true;
+  public static final boolean frontRightEncoderInverted = false;
 
   // Forward encoder reading in rotations, after direction correction.
-  public static final double frontRightEncoderOffsetRotations = 0.128906;
+  public static final double frontRightEncoderOffsetRotations = 0.334228515625;
 
   // Rear right CAN IDs and directions.
   public static final int rearRightDriveMotorId = 5;
@@ -64,14 +64,14 @@ public final class Constants {
 
   public static final int rearRightEncoderId = 5;
 
-  public static final boolean rearRightDriveInverted = false;
+  public static final boolean rearRightDriveInverted = true;
 
-  public static final boolean rearRightSteerInverted = false;
+  public static final boolean rearRightSteerInverted = true;
 
-  public static final boolean rearRightEncoderInverted = true;
+  public static final boolean rearRightEncoderInverted = false;
 
   // Forward encoder reading in rotations, after direction correction.
-  public static final double rearRightEncoderOffsetRotations = -0.201416;
+  public static final double rearRightEncoderOffsetRotations = -0.019775390625;
 
   // Rear left CAN IDs and directions.
   public static final int rearLeftDriveMotorId = 7;
@@ -82,12 +82,12 @@ public final class Constants {
 
   public static final boolean rearLeftDriveInverted = false;
 
-  public static final boolean rearLeftSteerInverted = false;
+  public static final boolean rearLeftSteerInverted = true;
 
   public static final boolean rearLeftEncoderInverted = false;
 
   // Forward encoder reading in rotations, after direction correction.
-  public static final double rearLeftEncoderOffsetRotations = 0.231445;
+  public static final double rearLeftEncoderOffsetRotations = -0.109375;
 
   // Driver input settings.
   public static final class OperatorConstants {
@@ -133,7 +133,7 @@ public final class Constants {
     public static final double kTrackWidthMeters = trackWidth;
 
     // Verify wheel diameter and gearing on the robot.
-    public static final double kWheelDiameterMeters = 0.0889;
+    public static final double kWheelDiameterMeters = 0.2032;
 
     // Motor rotations per wheel rotation.
     public static final double kDriveReduction = 6.75;
