@@ -154,7 +154,7 @@ public final class Constants {
     public static final double kMaxDriveVolts = 3.0;
 
     // Feedforward volts per m/s; requires tuning
-    public static final double kDriveKV = 1.0;
+    public static final double kDriveKV = 2.0;
 
     // Drive feedforward: V and V/(m/s²). Zero until measured with SysId.
     public static final double kDriveKS = 0.0;
