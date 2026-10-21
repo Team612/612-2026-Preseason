@@ -98,21 +98,21 @@ public final class Constants {
     public static final double kDeadband = 0.10;
 
     // Stick speed multipliers.
-    public static final double kForwardSpeedScale = 1.0;
+    public static final double kForwardSpeedScale = 1.0; 
 
     public static final double kStrafeSpeedScale = 1.0;
 
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 2.0; // last tested version had it at 1.0 (more aggressive now)
+    public static final double kTranslationSlewRatePerSecond = 1.0; 
 
-    public static final double kRotationSlewRatePerSecond = 2.0; // last tested version had it at 1.0 (more aggressive now)
+    public static final double kRotationSlewRatePerSecond = 1.0; 
 
     // Centered stick braking rates // VERIFY on da floor
-    public static final double kTranslationReleaseSlewRatePerSecond = 2.0;
+    public static final double kTranslationReleaseSlewRatePerSecond = 1.0;
 
-    public static final double kRotationReleaseSlewRatePerSecond = 2.0;
+    public static final double kRotationReleaseSlewRatePerSecond = 1.0;
 
     // Caps elapsed time to prevent input jumps after a delay.
     public static final double kMaxLimiterStepSeconds = 0.04;
