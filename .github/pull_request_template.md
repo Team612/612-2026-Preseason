@@ -1,1 +1,0 @@
-### Ticket reference (ticket number)
