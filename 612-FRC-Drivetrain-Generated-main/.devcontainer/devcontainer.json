@@ -1,0 +1,13 @@
+{
+  "name": "FRC WPILib Development",
+  "image": "docker.io/library/eclipse-temurin:21-jdk-jammy",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "wpilibsuite.vscode-wpilib",
+        "vscjava.vscode-java-pack"
+      ]
+    }
+  },
+  "postCreateCommand": "chmod +x gradlew && ./gradlew build -x test"
+}
