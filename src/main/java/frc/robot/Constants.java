@@ -105,9 +105,9 @@ public final class Constants {
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 1.0;
+    public static final double kTranslationSlewRatePerSecond = 2.0; // last tested version had it at 1.0 (more aggressive now)
 
-    public static final double kRotationSlewRatePerSecond = 1.0;
+    public static final double kRotationSlewRatePerSecond = 2.0; // last tested version had it at 1.0 (more aggressive now)
 
     // Centered stick braking rates // VERIFY on da floor
     public static final double kTranslationReleaseSlewRatePerSecond = 2.0;
