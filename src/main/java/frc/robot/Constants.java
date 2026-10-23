@@ -95,24 +95,24 @@ public final class Constants {
     public static final int kDriverControllerPort = 0;
 
     // Translation uses stick magnitude; rotation uses one axis supposedly
-    public static final double kDeadband = 0.10;
+    public static final double kDeadband = 0.02; // last working version at 0.10
 
     // Stick speed multipliers.
-    public static final double kForwardSpeedScale = 1.0; 
+    public static final double kForwardSpeedScale = 1.0;
 
     public static final double kStrafeSpeedScale = 1.0;
 
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 1.0; 
+    public static final double kTranslationSlewRatePerSecond = 8.0; // working version had it at 1.0 (more aggressive now)
 
-    public static final double kRotationSlewRatePerSecond = 1.0; 
+    public static final double kRotationSlewRatePerSecond = 8.0; // working version was at 1.0 (more aggressive now)
 
     // Centered stick braking rates // VERIFY on da floor
-    public static final double kTranslationReleaseSlewRatePerSecond = 1.0;
+    public static final double kTranslationReleaseSlewRatePerSecond = 10.0; // last working version had it at 2.0
 
-    public static final double kRotationReleaseSlewRatePerSecond = 1.0;
+    public static final double kRotationReleaseSlewRatePerSecond = 10.0; // last working version had it at 2.0
 
     // Caps elapsed time to prevent input jumps after a delay.
     public static final double kMaxLimiterStepSeconds = 0.04;
@@ -138,7 +138,7 @@ public final class Constants {
     // Motor rotations per wheel rotation.
     public static final double kDriveReduction = 6.75;
 
-    public static final double kMaxSpeedMetersPerSecond = 2.0;
+    public static final double kMaxSpeedMetersPerSecond = 2.0; // last working version at 2.0 (this val based on gear ratio)
 
     // Start threshold to avoid steering at near zero speed (mucho slow)
     public static final double kMinimumModuleSpeedMetersPerSecond = 0.03;
@@ -151,7 +151,7 @@ public final class Constants {
         Math.PI * 2.0,
         kMaxSpeedMetersPerSecond / Math.hypot(kWheelBaseMeters / 2.0, kTrackWidthMeters / 2.0));
 
-    public static final double kMaxDriveVolts = 3.0;
+    public static final double kMaxDriveVolts = 12.0; // last working version at 3.0 (this val was at 25% power)
 
     // Feedforward volts per m/s; requires tuning
     public static final double kDriveKV = 2.0;
@@ -167,9 +167,9 @@ public final class Constants {
     public static final double kTurnClosedLoopRampSeconds = 0.0;
 
     // Speed correction volts per m/s.
-    public static final double kDriveP = 1.0;
+    public static final double kDriveP = 2.0; // last working version at 1.0 ; tune these on blocks and make driving setup faster
 
-    public static final double kMaxDriveCorrectionVolts = 1.0;
+    public static final double kMaxDriveCorrectionVolts = 2.5; // last working verison at 1.0 ; tune on blocks and make turning aggressive
 
     // Stationary threshold for heading or mode changes.
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
@@ -218,16 +218,16 @@ public final class Constants {
 
     public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
 
-    public static final double kMaxTurnVolts = 4.0;
+    public static final double kMaxTurnVolts = 12.0; // last working version at 4.0; the new value will be more crispy
 
     // Supply limits battery current; stator limits motor torque. // no brownies
-    public static final double kDriveSupplyLimitAmps = 12.0;
+    public static final double kDriveSupplyLimitAmps = 40.0; // last working version at 12.0
 
-    public static final double kDriveStatorLimitAmps = 12.0;
+    public static final double kDriveStatorLimitAmps = 60.0; // last working version at 12.0
 
-    public static final double kTurnSupplyLimitAmps = 12.0;
+    public static final double kTurnSupplyLimitAmps = 25.0; // last working version at 12.0
 
-    public static final double kTurnStatorLimitAmps = 12.0;
+    public static final double kTurnStatorLimitAmps = 40.0; // last working version at 12.0
 
     public static final ModuleConfiguration kFrontLeft =
         new ModuleConfiguration(
