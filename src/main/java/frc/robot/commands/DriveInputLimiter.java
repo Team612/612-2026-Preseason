@@ -13,7 +13,14 @@ final class DriveInputLimiter {
   private double limitedRotation;
 
   ChassisSpeeds calculate(double forward, double strafe, double rotation, double elapsedSeconds) {
-    elapsedSeconds = Math.max(0.0, elapsedSeconds);
+    if (!Double.isFinite(forward) || !Double.isFinite(strafe)
+        || !Double.isFinite(rotation)) {
+      reset();
+      return new ChassisSpeeds();
+    }
+    elapsedSeconds = Double.isFinite(elapsedSeconds)
+        ? MathUtil.clamp(elapsedSeconds, 0.0, Constants.OperatorConstants.kMaxLimiterStepSeconds)
+        : 0.0;
     double deadband = Constants.OperatorConstants.kDeadband;
     forward = MathUtil.clamp(forward, -1.0, 1.0);
     strafe = MathUtil.clamp(strafe, -1.0, 1.0);
@@ -31,15 +38,19 @@ final class DriveInputLimiter {
 
     Translation2d requestedTranslation = new Translation2d(forward, strafe);
     Translation2d change = requestedTranslation.minus(limitedTranslation);
-    double maxChange = Constants.OperatorConstants.kTranslationSlewRatePerSecond
-        * elapsedSeconds;
+    double translationRate = requestedTranslation.getNorm() == 0.0
+        ? Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond
+        : Constants.OperatorConstants.kTranslationSlewRatePerSecond;
+    double maxChange = translationRate * elapsedSeconds;
     if (change.getNorm() <= maxChange) {
       limitedTranslation = requestedTranslation;
     } else {
       limitedTranslation = limitedTranslation.plus(change.times(maxChange / change.getNorm()));
     }
-    double maxRotationChange = Constants.OperatorConstants.kRotationSlewRatePerSecond
-        * elapsedSeconds;
+    double rotationRate = rotation == 0.0
+        ? Constants.OperatorConstants.kRotationReleaseSlewRatePerSecond
+        : Constants.OperatorConstants.kRotationSlewRatePerSecond;
+    double maxRotationChange = rotationRate * elapsedSeconds;
     limitedRotation += MathUtil.clamp(
         rotation - limitedRotation, -maxRotationChange, maxRotationChange);
     return new ChassisSpeeds(

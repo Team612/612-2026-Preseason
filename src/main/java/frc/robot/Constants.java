@@ -133,12 +133,12 @@ public final class Constants {
     public static final double kTrackWidthMeters = trackWidth;
 
     // Verify wheel diameter and gearing on the robot.
-    public static final double kWheelDiameterMeters = 0.2032;
+    public static final double kWheelDiameterMeters = 0.1778;
 
     // Motor rotations per wheel rotation.
     public static final double kDriveReduction = 6.75;
 
-    public static final double kMaxSpeedMetersPerSecond = 2.0; // last working version at 2.0 (this val based on gear ratio)
+    public static final double kMaxSpeedMetersPerSecond = 2.4; // last working version at 2.0 (this val based on gear ratio)
 
     // Start threshold to avoid steering at near zero speed (mucho slow)
     public static final double kMinimumModuleSpeedMetersPerSecond = 0.03;
@@ -167,9 +167,9 @@ public final class Constants {
     public static final double kTurnClosedLoopRampSeconds = 0.0;
 
     // Speed correction volts per m/s.
-    public static final double kDriveP = 2.0; // last working version at 1.0 ; tune these on blocks and make driving setup faster
+    public static final double kDriveP = 2.5; // last working version at 1.0 ; tune these on blocks and make driving setup faster
 
-    public static final double kMaxDriveCorrectionVolts = 2.5; // last working verison at 1.0 ; tune on blocks and make turning aggressive
+    public static final double kMaxDriveCorrectionVolts = 3.0; // last working verison at 1.0 ; tune on blocks and make turning aggressive
 
     // Stationary threshold for heading or mode changes.
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
@@ -178,14 +178,14 @@ public final class Constants {
     public static final boolean kEnableDriveVelocityCorrection = true;
 
     // Steering PID gains; angles use radians.
-    public static final double kTurnP = 0.5;
+    public static final double kTurnP = 1.0;
 
     public static final double kTurnI = 0.0;
 
     public static final double kTurnD = 0.0;
 
     // Velocity damping in volts per rad/s.
-    public static final double kTurnVelocityDamping = 0.15;
+    public static final double kTurnVelocityDamping = 0.20;
 
     // Below this rate, steering can stop within tolerance.
     public static final double kTurnSettledVelocityRadPerSec = 0.1;
@@ -214,9 +214,9 @@ public final class Constants {
     public static final double kTurnToleranceHysteresisRad = Math.toRadians(1.0);
 
     // Steering profile speed and acceleration limits.
-    public static final double kMaxTurnRadPerSec = Math.PI * 2.0;
+    public static final double kMaxTurnRadPerSec = Math.PI * 4.0;
 
-    public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 4.0;
+    public static final double kMaxTurnAccelRadPerSecSquared = Math.PI * 12.0;
 
     public static final double kMaxTurnVolts = 12.0; // last working version at 4.0; the new value will be more crispy
 
