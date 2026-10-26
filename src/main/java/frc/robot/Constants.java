@@ -133,7 +133,7 @@ public final class Constants {
     public static final double kTrackWidthMeters = trackWidth;
 
     // Verify wheel diameter and gearing on the robot.
-    public static final double kWheelDiameterMeters = 0.1778; // 7 inch diameter may need to be tuned out
+    public static final double kWheelDiameterMeters = 0.1016 // 4 inch diameter may need to be tuned out
 
     // Motor rotations per wheel rotation.
     public static final double kDriveReduction = 6.75;
