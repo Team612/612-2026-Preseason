@@ -105,14 +105,14 @@ public final class Constants {
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 8.0; // working version had it at 1.0 (more aggressive now)
+    public static final double kTranslationSlewRatePerSecond = 4.0; // working version had it at 1.0 (more aggressive now) ratio 4:5 from slewrate to releaseSlew
 
-    public static final double kRotationSlewRatePerSecond = 8.0; // working version was at 1.0 (more aggressive now)
+    public static final double kRotationSlewRatePerSecond = 4.0; // working version was at 1.0 (more aggressive now)
 
     // Centered stick braking rates // VERIFY on da floor
-    public static final double kTranslationReleaseSlewRatePerSecond = 10.0; // last working version had it at 2.0
+    public static final double kTranslationReleaseSlewRatePerSecond = 5.0; // last working version had it at 2.0
 
-    public static final double kRotationReleaseSlewRatePerSecond = 10.0; // last working version had it at 2.0
+    public static final double kRotationReleaseSlewRatePerSecond = 5.0; // last working version had it at 2.0
 
     // Caps elapsed time to prevent input jumps after a delay.
     public static final double kMaxLimiterStepSeconds = 0.04;
@@ -133,12 +133,12 @@ public final class Constants {
     public static final double kTrackWidthMeters = trackWidth;
 
     // Verify wheel diameter and gearing on the robot.
-    public static final double kWheelDiameterMeters = 0.1016 // 4 inch diameter may need to be tuned out
+    public static final double kWheelDiameterMeters = 0.1016; // 4 inch diameter may need to be tuned out
 
-    // Motor rotations per wheel rotation.
+    // Motor rotations per wheel rotation
     public static final double kDriveReduction = 6.75;
 
-    public static final double kMaxSpeedMetersPerSecond = 2.0; // last working version at 2.0 (this val based on gear ratio)
+    public static final double kMaxSpeedMetersPerSecond = 2.25; // last working version at 2.0 (this val based on gear ratio)
 
     // Start threshold to avoid steering at near zero speed (mucho slow)
     public static final double kMinimumModuleSpeedMetersPerSecond = 0.03;
@@ -167,9 +167,9 @@ public final class Constants {
     public static final double kTurnClosedLoopRampSeconds = 0.0;
 
     // Speed correction volts per m/s.
-    public static final double kDriveP = 2.0; // last working version at 1.0 ; tune these on blocks and make driving setup faster
+    public static final double kDriveP = 2.0; // last working version at 1.0; tune these on blocks and make driving setup faster
 
-    public static final double kMaxDriveCorrectionVolts = 2.5; // last working verison at 1.0 ; tune on blocks and make turning aggressive
+    public static final double kMaxDriveCorrectionVolts = 2.75; // last working verison at 1.0 ; tune on blocks and make turning aggressive
 
     // Stationary threshold for heading or mode changes.
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
