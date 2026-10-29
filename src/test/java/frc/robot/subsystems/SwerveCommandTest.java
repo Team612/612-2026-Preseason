@@ -15,6 +15,8 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants;
+import frc.robot.commands.SwerveDrive;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import java.lang.reflect.Field;
 import org.junit.jupiter.api.*;
 
@@ -25,6 +27,7 @@ class SwerveCommandTest {
   private static final TalonFX[] turns = new TalonFX[4];
   private static final CANcoder[] encoders = new CANcoder[4];
   private static Pigeon2 gyro;
+  private static double simulatedYaw;
 
   private static <T> T field(Object object, String name, Class<T> type) throws Exception {
     Field field = object.getClass().getDeclaredField(name);
@@ -55,7 +58,7 @@ class SwerveCommandTest {
 
   private static void tick() throws Exception {
     gyro.getSimState().setSupplyVoltage(12);
-    gyro.getSimState().setRawYaw(0);
+    gyro.getSimState().setRawYaw(simulatedYaw);
     for (int i = 0; i < 4; i++) {
       var config = field(modules[i], "configuration", Constants.ModuleConfiguration.class);
       drives[i].getSimState().setSupplyVoltage(12);
@@ -84,9 +87,11 @@ class SwerveCommandTest {
     CommandScheduler.getInstance().cancelAll();
     swerve.stop();
     mode(false, false);
+    simulatedYaw = 0;
     DriverStationSim.setAllianceStationId(AllianceStationID.Blue1);
     DriverStationSim.notifyNewData();
     tick();
+    swerve.resetHeading();
   }
 
   @AfterAll
@@ -99,6 +104,100 @@ class SwerveCommandTest {
     }
     if (gyro != null) gyro.close();
     SignalLogger.stop();
+  }
+
+  @Test
+  void fieldTranslationUsesHeadingAndAllianceWithoutChangingRotation() throws Exception {
+    for (var alliance : new AllianceStationID[] {AllianceStationID.Blue1, AllianceStationID.Red1}) {
+      mode(false, false);
+      DriverStationSim.setAllianceStationId(alliance);
+      DriverStationSim.notifyNewData();
+      for (double yaw : new double[] {0, 90, -90, 180}) {
+        simulatedYaw = yaw;
+        for (int i = 0; i < 4; i++) tick();
+        mode(true, false);
+        assertTrue(swerve.driveOperatorRelative(new ChassisSpeeds(0.5, 0.2, 0.3)));
+        var actual = field(swerve, "commandedSpeeds", ChassisSpeeds.class);
+        double angle = Math.toRadians(yaw - (alliance == AllianceStationID.Red1 ? 180 : 0));
+        assertEquals(0.5 * Math.cos(angle) + 0.2 * Math.sin(angle), actual.vxMetersPerSecond, 1e-6);
+        assertEquals(-0.5 * Math.sin(angle) + 0.2 * Math.cos(angle), actual.vyMetersPerSecond, 1e-6);
+        assertEquals(0.3, actual.omegaRadiansPerSecond, 1e-6);
+        mode(false, false);
+      }
+    }
+  }
+
+  @Test
+  void toggleWhileMovingKeepsDemandContinuousAndDoesNotRequireNeutral() throws Exception {
+    simulatedYaw = 90;
+    for (int i = 0; i < 4; i++) tick();
+    double[] forward = {0};
+    var command = new SwerveDrive(swerve, () -> forward[0], () -> 0, () -> 0, () -> true);
+    mode(true, false);
+    CommandScheduler.getInstance().schedule(command);
+    tick();
+    forward[0] = 0.5;
+    for (int i = 0; i < 12; i++) tick();
+    var before = field(swerve, "commandedSpeeds", ChassisSpeeds.class);
+    assertTrue(before.vyMetersPerSecond < -0.5);
+    for (int i = 0; i < 6; i++) {
+      command.toggleDriveMode();
+      assertEquals(i % 2 != 0, SmartDashboard.getBoolean("Drive/FieldRelativeMode", true));
+      tick();
+      var after = field(swerve, "commandedSpeeds", ChassisSpeeds.class);
+      assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
+      assertTrue(Math.hypot(after.vxMetersPerSecond, after.vyMetersPerSecond) > 0.5);
+      assertTrue(Math.hypot(after.vxMetersPerSecond - before.vxMetersPerSecond,
+          after.vyMetersPerSecond - before.vyMetersPerSecond)
+          <= Constants.SwerveConstants.kMaxSpeedMetersPerSecond
+              * Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond
+              * Constants.OperatorConstants.kMaxLimiterStepSeconds + 1e-6);
+      before = after;
+    }
+  }
+
+  @Test
+  void smallRestingStickOffsetsArmPromptlyWithoutMotion() throws Exception {
+    double[] axes = {0.04, 0.03, -0.04};
+    var command = new SwerveDrive(swerve, () -> axes[0], () -> axes[1], () -> axes[2], () -> true);
+    mode(true, false);
+    CommandScheduler.getInstance().schedule(command);
+    tick();
+    assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
+    assertEquals("Ready", SmartDashboard.getString("Drive/Status", ""));
+    tick();
+    assertEquals(0.0, field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond);
+    axes[0] = 0.5;
+    tick();
+    assertTrue(field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond > 0.0);
+  }
+
+  @Test
+  void heldStickAndReconnectStillRequireNeutral() throws Exception {
+    double[] forward = {0.5};
+    boolean[] connected = {true};
+    var command = new SwerveDrive(swerve, () -> forward[0], () -> 0, () -> 0, () -> connected[0]);
+    mode(true, false);
+    CommandScheduler.getInstance().schedule(command);
+    tick();
+    assertTrue(SmartDashboard.getBoolean("Drive/WaitingForNeutral", false));
+    assertEquals("Center sticks to arm drive", SmartDashboard.getString("Drive/Status", ""));
+    assertEquals(0.0, field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond);
+    forward[0] = 0;
+    tick();
+    forward[0] = 0.5;
+    tick();
+    assertTrue(field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond > 0.0);
+    connected[0] = false;
+    tick();
+    assertEquals("Controller disconnected", SmartDashboard.getString("Drive/Status", ""));
+    connected[0] = true;
+    tick();
+    assertTrue(SmartDashboard.getBoolean("Drive/WaitingForNeutral", false));
+    assertEquals(0.0, field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond);
+    forward[0] = 0;
+    tick();
+    assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
   }
 
   @Test

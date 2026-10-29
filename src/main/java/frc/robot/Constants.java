@@ -94,8 +94,9 @@ public final class Constants {
 
     public static final int kDriverControllerPort = 0;
 
-    // Translation uses stick magnitude; rotation uses one axis supposedly
-    public static final double kDeadband = 0.02; // last working version at 0.10
+    // Shared by drive shaping and enable neutral detection, allowing small resting offsets.
+    // Translation uses stick magnitude; rotation uses one axis.
+    public static final double kDeadband = 0.06;
 
     // Stick speed multipliers.
     public static final double kForwardSpeedScale = 1.0;
@@ -104,15 +105,14 @@ public final class Constants {
 
     public static final double kRotationSpeedScale = 1.0;
 
-    // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 4.0; // working version had it at 1.0 (more aggressive now) ratio 4:5 from slewrate to releaseSlew
+    // Normalized input change per second: about 0.33 s from rest to full demand.
+    // Translation and rotation share this budget when commanded together.
+    public static final double kTranslationSlewRatePerSecond = 3.0;
+    public static final double kRotationSlewRatePerSecond = 3.0;
 
-    public static final double kRotationSlewRatePerSecond = 4.0; // working version was at 1.0 (more aggressive now)
-
-    // Centered stick braking rates // VERIFY on da floor
-    public static final double kTranslationReleaseSlewRatePerSecond = 5.0; // last working version had it at 2.0
-
-    public static final double kRotationReleaseSlewRatePerSecond = 5.0; // last working version had it at 2.0
+    // Same-direction slowdowns and release brake in about 0.20 s from full demand.
+    public static final double kTranslationReleaseSlewRatePerSecond = 5.0;
+    public static final double kRotationReleaseSlewRatePerSecond = 5.0;
 
     // Caps elapsed time to prevent input jumps after a delay.
     public static final double kMaxLimiterStepSeconds = 0.04;

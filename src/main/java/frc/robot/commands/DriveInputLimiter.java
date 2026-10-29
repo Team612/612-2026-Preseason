@@ -4,6 +4,7 @@ package frc.robot.commands;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import frc.robot.Constants;
 
@@ -38,21 +39,35 @@ final class DriveInputLimiter {
 
     Translation2d requestedTranslation = new Translation2d(forward, strafe);
     Translation2d change = requestedTranslation.minus(limitedTranslation);
-    double translationRate = requestedTranslation.getNorm() == 0.0
+    // Only a reduction along the same direction is braking. Direction changes
+    // and reversals retain the acceleration limit rather than getting a faster ramp.
+    double cross = requestedTranslation.getX() * limitedTranslation.getY()
+        - requestedTranslation.getY() * limitedTranslation.getX();
+    double dot = requestedTranslation.getX() * limitedTranslation.getX()
+        + requestedTranslation.getY() * limitedTranslation.getY();
+    boolean translationBraking = requestedTranslation.getNorm() <= limitedTranslation.getNorm()
+        && dot >= 0.0 && Math.abs(cross) < 1e-9;
+    boolean rotationBraking = Math.abs(rotation) <= Math.abs(limitedRotation)
+        && rotation * limitedRotation >= 0.0;
+    double translationRate = translationBraking
         ? Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond
         : Constants.OperatorConstants.kTranslationSlewRatePerSecond;
-    double maxChange = translationRate * elapsedSeconds;
-    if (change.getNorm() <= maxChange) {
-      limitedTranslation = requestedTranslation;
-    } else {
-      limitedTranslation = limitedTranslation.plus(change.times(maxChange / change.getNorm()));
-    }
-    double rotationRate = rotation == 0.0
+    double rotationRate = rotationBraking
         ? Constants.OperatorConstants.kRotationReleaseSlewRatePerSecond
         : Constants.OperatorConstants.kRotationSlewRatePerSecond;
-    double maxRotationChange = rotationRate * elapsedSeconds;
-    limitedRotation += MathUtil.clamp(
-        rotation - limitedRotation, -maxRotationChange, maxRotationChange);
+    double rotationChange = rotation - limitedRotation;
+    double translationSeconds = change.getNorm() / translationRate;
+    double rotationSeconds = Math.abs(rotationChange) / rotationRate;
+    // Share accelerating demand; braking keeps its own fast ramp, even when
+    // the other stick requests acceleration. This avoids a long combined stop.
+    double accelerationSeconds = (translationBraking ? 0.0 : translationSeconds)
+        + (rotationBraking ? 0.0 : rotationSeconds);
+    double translationFraction = rampFraction(elapsedSeconds,
+        translationBraking ? translationSeconds : accelerationSeconds);
+    double rotationFraction = rampFraction(elapsedSeconds,
+        rotationBraking ? rotationSeconds : accelerationSeconds);
+    limitedTranslation = limitedTranslation.plus(change.times(translationFraction));
+    limitedRotation += rotationChange * rotationFraction;
     return new ChassisSpeeds(
         limitedTranslation.getX()
             * Constants.OperatorConstants.kForwardSpeedScale
@@ -63,6 +78,20 @@ final class DriveInputLimiter {
         limitedRotation
             * Constants.OperatorConstants.kRotationSpeedScale
             * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec);
+  }
+
+  private static double rampFraction(double elapsedSeconds, double requiredSeconds) {
+    return requiredSeconds > 0.0 ? Math.min(1.0, elapsedSeconds / requiredSeconds) : 1.0;
+  }
+
+  /** Expresses the existing translation demand in a new frame without stopping it. */
+  void rotateReferenceFrame(Rotation2d rotation) {
+    Translation2d scaled = new Translation2d(
+        limitedTranslation.getX() * Constants.OperatorConstants.kForwardSpeedScale,
+        limitedTranslation.getY() * Constants.OperatorConstants.kStrafeSpeedScale).rotateBy(rotation);
+    limitedTranslation = new Translation2d(
+        scaled.getX() / Constants.OperatorConstants.kForwardSpeedScale,
+        scaled.getY() / Constants.OperatorConstants.kStrafeSpeedScale);
   }
 
   void reset() {

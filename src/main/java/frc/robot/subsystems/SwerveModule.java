@@ -629,6 +629,10 @@ public class SwerveModule {
     double supplyCurrentAmps = 0.0;
     double statorCurrentAmps = 0.0;
     if (driveMotor != null) {
+      SmartDashboard.putNumber(name + "/DriveAppliedVolts",
+          driveMotor.getMotorVoltage().getValueAsDouble());
+      SmartDashboard.putNumber(name + "/DriveSupplyVolts",
+          driveMotor.getSupplyVoltage().getValueAsDouble());
       supplyCurrentAmps = finiteOrZero(driveMotor.getSupplyCurrent().getValueAsDouble());
       statorCurrentAmps = finiteOrZero(driveMotor.getStatorCurrent().getValueAsDouble());
     }

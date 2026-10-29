@@ -46,9 +46,13 @@ class SwerveModuleTest {
   }
 
   private static void updateSensors() {
-    drive.getSimState().setSupplyVoltage(12.0);
-    turn.getSimState().setSupplyVoltage(12.0);
-    encoder.getSimState().setSupplyVoltage(12.0);
+    updateSensors(12.0);
+  }
+
+  private static void updateSensors(double supplyVolts) {
+    drive.getSimState().setSupplyVoltage(supplyVolts);
+    turn.getSimState().setSupplyVoltage(supplyVolts);
+    encoder.getSimState().setSupplyVoltage(supplyVolts);
     drive.getSimState().setRawRotorPosition(0.0);
     drive.getSimState().setRotorVelocity(0.0);
     turn.getSimState().setRawRotorPosition(0.0);
@@ -105,6 +109,23 @@ class SwerveModuleTest {
     assertEquals(-Constants.SwerveConstants.kMaxTurnVolts, field("turnVolts", Double.class));
     assertFalse(module.characterize(true, Double.NaN));
     assertEquals(0.0, field("turnVolts", Double.class));
+  }
+
+  @Test
+  void steadyDemandDoesNotToggleDriveCommandBelowTwelveVolts() throws Exception {
+    mode(true, false);
+    // Fixed encoder feedback isolates voltage gating in our control code.
+    // This is not a battery/current-limit or mechanical drivetrain simulation.
+    for (double supplyVolts : new double[] {12.5, 11.9, 11.5, 10.5, 11.9}) {
+      for (int i = 0; i < 10; i++) {
+        updateSensors(supplyVolts);
+        assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+        assertEquals(Constants.SwerveConstants.kDriveKV
+            + Math.min(Constants.SwerveConstants.kDriveP,
+                Constants.SwerveConstants.kMaxDriveCorrectionVolts),
+            field("driveVolts", Double.class), 1e-6);
+      }
+    }
   }
 
   @Test
