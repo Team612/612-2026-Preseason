@@ -71,7 +71,7 @@ public final class Constants {
   public static final boolean rearRightEncoderInverted = false;
 
   // Forward encoder reading in rotations, after direction correction.
-  public static final double rearRightEncoderOffsetRotations = -0.289307;
+  public static final double rearRightEncoderOffsetRotations = 0.289307; // last working -0.289307 real
 
   // Rear left CAN IDs and directions.
   public static final int rearLeftDriveMotorId = 7;
@@ -94,27 +94,31 @@ public final class Constants {
 
     public static final int kDriverControllerPort = 0;
 
-    // Shared by drive shaping and enable neutral detection, allowing small resting offsets.
-    // Translation uses stick magnitude; rotation uses one axis.
+    // allowing small resting offsets (your resting on the joystick wont move the thing accidentally)
+    // Translation uses stick magnitude; rotation uses one axis also be afriad of the joystick stick drift
     public static final double kDeadband = 0.06;
 
-    // Stick speed multipliers.
+    // Stick speed multipliers (multiplies forward backward etc speed demand)
     public static final double kForwardSpeedScale = 1.0;
 
-    public static final double kStrafeSpeedScale = 1.0;
+    public static final double kStrafeSpeedScale = 1.0; // i think yall know what strafe means
 
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per second: about 0.33 s from rest to full demand.
-    // Translation and rotation share this budget when commanded together.
-    public static final double kTranslationSlewRatePerSecond = 3.0;
+    // Translation and rotation share this "budget"
+
+    // higher value for kTranslationSlewRatePerSecond and kRotationSlewRatePerSecond means faster response to joystick input
+    public static final double kTranslationSlewRatePerSecond = 3.0; // last working ratio between SlewRate: Releaseslew was 3:5
     public static final double kRotationSlewRatePerSecond = 3.0;
 
-    // Same-direction slowdowns and release brake in about 0.20 s from full demand.
+    // Same direction slowdowns and release brake in about 0.20 s from full demand
+
+    // higher values for kTranslationReleaseSlewRatePerSecond and kRotationReleaseSlewRatePerSecond means faster release of joystick input
     public static final double kTranslationReleaseSlewRatePerSecond = 5.0;
     public static final double kRotationReleaseSlewRatePerSecond = 5.0;
 
-    // Caps elapsed time to prevent input jumps after a delay.
+    
     public static final double kMaxLimiterStepSeconds = 0.04;
 
     // No instances needed.
@@ -159,19 +163,9 @@ public final class Constants {
     // Drive feedforward: V and V/(m/s²). Zero until measured with SysId.
     public static final double kDriveKS = 0.0;
     public static final double kDriveKA = 0.0;
-
-    // Bounds voltage steps from feedback and changing wheel alignment. A starting
-    // point for floor testing; emergency/disabled stops still go directly to zero.
-    // Software limit in V/s for both rising and falling drive voltage commands.
-    // Higher positive values respond faster; 0 disables this software ramp.
     public static final double kDriveVoltageSlewRateVoltsPerSecond = 24.0;
 
-    // Maximum elapsed time credited to one voltage ramp update; must be below watchdog expiry.
-    public static final double kDriveVoltageMaxStepSeconds = 0.04;
-
-    // Talon voltage ramp periods (seconds from 0 to 12 V). Leave zero when using
-    // the software ramp. VoltageOut uses OPEN-loop ramps, even with software PID;
-    // closed-loop ramps apply only to onboard closed-loop control requests.
+    // Voltage ramp periods (seconds from 0 to 12 V). Zero preserves existing behavio
     public static final double kDriveOpenLoopRampSeconds = 0.0;
     public static final double kDriveClosedLoopRampSeconds = 0.0;
     public static final double kTurnOpenLoopRampSeconds = 0.0;
@@ -182,7 +176,7 @@ public final class Constants {
 
     public static final double kMaxDriveCorrectionVolts = 2.75; // last working verison at 1.0 ; tune on blocks and make turning aggressive
 
-    // Stationary threshold for heading resets and characterization.
+    // Stationary threshold for heading or mode changes.
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
 
     // Stop if required drive feedback is unavailable.

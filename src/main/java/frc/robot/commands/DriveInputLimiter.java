@@ -39,7 +39,7 @@ final class DriveInputLimiter {
 
     // Limit the requested chassis motion BEFORE storing slew history. Otherwise the
     // history winds up beyond feasible wheel speed and releasing rotation can
-    // suddenly accelerate translation
+    // suddenly accelerate translation 
     // |translation| +  da |omega| * radius bounds every wheel at every heading trust it works
     // keep field relative history feasible
     // as the chassis rotates under a fixed field translation demand
