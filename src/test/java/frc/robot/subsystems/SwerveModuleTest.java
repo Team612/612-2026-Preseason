@@ -50,11 +50,16 @@ class SwerveModuleTest {
   }
 
   private static void updateSensors(double supplyVolts) {
+    updateSensors(supplyVolts, 0.0);
+  }
+
+  private static void updateSensors(double supplyVolts, double measuredSpeed) {
     drive.getSimState().setSupplyVoltage(supplyVolts);
     turn.getSimState().setSupplyVoltage(supplyVolts);
     encoder.getSimState().setSupplyVoltage(supplyVolts);
     drive.getSimState().setRawRotorPosition(0.0);
-    drive.getSimState().setRotorVelocity(0.0);
+    drive.getSimState().setRotorVelocity(measuredSpeed * Constants.SwerveConstants.kDriveReduction
+        / (Math.PI * Constants.SwerveConstants.kWheelDiameterMeters));
     turn.getSimState().setRawRotorPosition(0.0);
     encoder.getSimState().setRawPosition(0.125);
     encoder.getSimState().setVelocity(0.0);
@@ -116,7 +121,11 @@ class SwerveModuleTest {
     mode(true, false);
     // Fixed encoder feedback isolates voltage gating in our control code.
     // This is not a battery/current-limit or mechanical drivetrain simulation.
-    for (double supplyVolts : new double[] {12.5, 11.9, 11.5, 10.5, 11.9}) {
+    for (int i = 0; i < 10; i++) { // yay for loop
+      updateSensors();
+      assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+    }
+    for (double supplyVolts : new double[] {12.5, 11.9, 11.75, 11.5, 10.5, 11.9}) {
       for (int i = 0; i < 10; i++) {
         updateSensors(supplyVolts);
         assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
@@ -126,6 +135,73 @@ class SwerveModuleTest {
             field("driveVolts", Double.class), 1e-6);
       }
     }
+  }
+
+  @Test
+  void changingSpeedFeedbackCannotStepDriveVoltageAndStopIsImmediate() throws Exception {
+    mode(true, false);
+    double previous = 0;
+    for (int i = 0; i < 60; i++) {
+      // Exercise lagging and overshooting feedback as supply falls through 11.75 V (guess)
+      updateSensors(i < 20 ? 12.5 : 11.5, (i / 10) % 2 == 0 ? 0.0 : 2.0);
+      assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+      double next = field("driveVolts", Double.class);
+      if (Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond == 0.0) {
+        assertEquals(field("requestedDriveVolts", Double.class), next, 1e-9);
+      } else {
+        assertTrue(Math.abs(next - previous)
+            <= Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond
+                * Constants.SwerveConstants.kDriveVoltageMaxStepSeconds + 1e-9);
+      }
+      previous = next;
+    }
+    module.stop();
+    assertEquals(0.0, field("driveVolts", Double.class));
+    assertEquals(0.0, field("turnVolts", Double.class));
+    updateSensors();
+    assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+    double requested = field("requestedDriveVolts", Double.class);
+    double firstStep = Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond
+        * Constants.SwerveConstants.kDriveVoltageMaxStepSeconds;
+    double restarted = field("driveVolts", Double.class);
+    assertTrue(restarted > 0.0);
+    assertTrue(restarted <= (firstStep == 0.0 ? requested : Math.min(requested, firstStep)) + 1e-9);
+  }
+
+  @Test
+  void moduleRestartsVoltageAfterWatchdogGapWithoutTeleopCommand() throws Exception {
+    mode(true, false);
+    module.stop();
+    for (int i = 0; i < 5; i++) {
+      updateSensors();
+      assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+    }
+    assertTrue(field("driveVolts", Double.class) > 0.0);
+    Timer.delay(Constants.SwerveConstants.kMotorSafetyExpirationSeconds);
+    updateSensors();
+    assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+    assertEquals(0.0, field("driveVolts", Double.class));
+    updateSensors();
+    assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
+    assertTrue(field("driveVolts", Double.class) > 0.0);
+    assertTrue(field("driveVolts", Double.class)
+        <= Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond
+            * Constants.SwerveConstants.kDriveVoltageMaxStepSeconds + 1e-9);
+  }
+
+  @Test
+  void optimizationReversesDriveAndPerpendicularDemandDoesNotDriveSideways() throws Exception {
+    mode(true, false);
+    for (int i = 0; i < 10; i++) {
+      updateSensors();
+      assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.fromDegrees(170))));
+    }
+    assertEquals(-10, module.getTargetState().angle.getDegrees(), 1e-6);
+    assertEquals(-Math.cos(Math.toRadians(10)), module.getTargetState().speedMetersPerSecond, 1e-6);
+    assertTrue(field("driveVolts", Double.class) < 0);
+    updateSensors();
+    assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.fromDegrees(90))));
+    assertEquals(0.0, field("driveVolts", Double.class), 1e-6);
   }
 
   @Test

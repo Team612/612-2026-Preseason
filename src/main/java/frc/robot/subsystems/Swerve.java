@@ -72,6 +72,10 @@ public class Swerve extends SubsystemBase {
     if (!yawStatus.isOK()) {
       DriverStation.reportWarning("Pigeon yaw update configuration failed: " + yawStatus, false);
     }
+    var gyroBusStatus = gyro.optimizeBusUtilization();
+    if (!gyroBusStatus.isOK()) { // houston we are NOT OKAY MAYDAY
+      DriverStation.reportWarning("Pigeon bus optimization failed: " + gyroBusStatus, false);
+    }
     Constants.ModuleConfiguration[] configurations = {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
@@ -531,6 +535,12 @@ public class Swerve extends SubsystemBase {
     SmartDashboard.putNumber("Swerve/CommandedOmegaRadiansPerSecond", commandedSpeeds.omegaRadiansPerSecond);
     SmartDashboard.putNumber("Swerve/BatteryVoltage", RobotController.getBatteryVoltage());
     SmartDashboard.putBoolean("Swerve/BrownedOut", RobotController.isBrownedOut());
+    var can = RobotController.getCANStatus();
+    SmartDashboard.putNumber("Swerve/CANUtilization", can.percentBusUtilization);
+    SmartDashboard.putNumber("Swerve/CANBusOffCount", can.busOffCount);
+    SmartDashboard.putNumber("Swerve/CANTxFullCount", can.txFullCount);
+    SmartDashboard.putNumber("Swerve/CANReceiveErrorCount", can.receiveErrorCount);
+    SmartDashboard.putNumber("Swerve/CANTransmitErrorCount", can.transmitErrorCount);
     SmartDashboard.putBoolean("Swerve/HardwareEnabled", hardwareEnabled);
     Rotation2d fieldHeading = readHeading();
     SmartDashboard.putBoolean("Swerve/PigeonConnected", fieldHeading != null);

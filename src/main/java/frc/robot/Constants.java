@@ -160,7 +160,18 @@ public final class Constants {
     public static final double kDriveKS = 0.0;
     public static final double kDriveKA = 0.0;
 
-    // Voltage ramp periods (seconds from 0 to 12 V). Zero preserves existing tuning.
+    // Bounds voltage steps from feedback and changing wheel alignment. A starting
+    // point for floor testing; emergency/disabled stops still go directly to zero.
+    // Software limit in V/s for both rising and falling drive voltage commands.
+    // Higher positive values respond faster; 0 disables this software ramp.
+    public static final double kDriveVoltageSlewRateVoltsPerSecond = 24.0;
+
+    // Maximum elapsed time credited to one voltage ramp update; must be below watchdog expiry.
+    public static final double kDriveVoltageMaxStepSeconds = 0.04;
+
+    // Talon voltage ramp periods (seconds from 0 to 12 V). Leave zero when using
+    // the software ramp. VoltageOut uses OPEN-loop ramps, even with software PID;
+    // closed-loop ramps apply only to onboard closed-loop control requests.
     public static final double kDriveOpenLoopRampSeconds = 0.0;
     public static final double kDriveClosedLoopRampSeconds = 0.0;
     public static final double kTurnOpenLoopRampSeconds = 0.0;
@@ -171,7 +182,7 @@ public final class Constants {
 
     public static final double kMaxDriveCorrectionVolts = 2.75; // last working verison at 1.0 ; tune on blocks and make turning aggressive
 
-    // Stationary threshold for heading or mode changes.
+    // Stationary threshold for heading resets and characterization.
     public static final double kStoppedSpeedMetersPerSecond = 0.05;
 
     // Stop if required drive feedback is unavailable.

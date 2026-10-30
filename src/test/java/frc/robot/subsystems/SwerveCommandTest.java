@@ -200,6 +200,52 @@ class SwerveCommandTest {
     assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
   }
 
+  @Test // apparently using the @Override @Test and all the other @ things are useful for making things faster
+  void neutralObservedDuringStartupDoesNotNeedToBeRepeatedAfterSensorsBecomeReady() throws Exception {
+    double[] forward = {0};
+    var command = new SwerveDrive(swerve, () -> forward[0], () -> 0, () -> 0, () -> true);
+    Field configured = SwerveModule.class.getDeclaredField("configurationSuccessful");
+    configured.setAccessible(true);
+    mode(true, false);
+    configured.setBoolean(modules[0], false);
+    try {
+      CommandScheduler.getInstance().schedule(command);
+      tick();
+      assertTrue(SmartDashboard.getString("Drive/Status", "").startsWith("Modules not ready"));
+      forward[0] = 0.5;
+      tick();
+      assertEquals(0.0, field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond);
+      configured.setBoolean(modules[0], true);
+      tick();
+      assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
+      assertTrue(field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond > 0);
+    } finally {
+      configured.setBoolean(modules[0], true);
+    }
+  }
+
+  @Test
+  void slowLoopRestartsRampWithoutLatchingOutHeldSticks() throws Exception {
+    double[] forward = {0};
+    var command = new SwerveDrive(swerve, () -> forward[0], () -> 0, () -> 0, () -> true);
+    mode(true, false);
+    CommandScheduler.getInstance().schedule(command);
+    tick();
+    forward[0] = 0.7;
+    for (int i = 0; i < 10; i++) tick();
+    Timer.delay(Constants.SwerveConstants.kMotorSafetyExpirationSeconds + 0.02);
+    tick();
+    assertEquals(0.0, field(swerve, "commandedSpeeds", ChassisSpeeds.class).vxMetersPerSecond);
+    assertEquals("Drive loop gap: ramp restarted", SmartDashboard.getString("Drive/Status", ""));
+    tick();
+    var resumed = field(swerve, "commandedSpeeds", ChassisSpeeds.class);
+    assertTrue(resumed.vxMetersPerSecond > 0.0);
+    assertTrue(resumed.vxMetersPerSecond <= Constants.OperatorConstants.kTranslationSlewRatePerSecond
+        * Constants.SwerveConstants.kMaxSpeedMetersPerSecond
+        * Constants.OperatorConstants.kMaxLimiterStepSeconds + 1e-9);
+    assertFalse(SmartDashboard.getBoolean("Drive/WaitingForNeutral", true));
+  }
+
   @Test
   void sysIdRunsThroughSchedulerAndCancellationStopsAllModules() throws Exception {
     mode(true, true);

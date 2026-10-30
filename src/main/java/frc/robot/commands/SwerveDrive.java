@@ -30,8 +30,10 @@ public class SwerveDrive extends Command {
   private double lastLimiterTimestampSeconds;
   // True at startup: translate relative to field heading rather than the robot nose.
   private boolean fieldRelativeMode = true;
-  // Prevents held sticks from restarting motion after enable, a fault, or a long loop gap.
+  // Prevents held sticks from starting motion after enable, disconnect, or a hardware fault.
   private boolean waitingForNeutral = true;
+  private boolean hardwareBlocked;
+  private int loopGapCount;
 
   /**
    * Receives axis readers and reserves the drivetrain so competing drive commands cannot run
@@ -54,6 +56,7 @@ public class SwerveDrive extends Command {
   /** Stops previous output and requires neutral sticks whenever this command starts. */
   @Override
   public void initialize() {
+    hardwareBlocked = false;
     stopAndRequireNeutral("Center sticks to arm drive");
   }
 
@@ -76,7 +79,40 @@ public class SwerveDrive extends Command {
 
     String blockedReason = getBlockedReason(forward, strafe, rotation, controllerConnected);
     if (blockedReason != null) {
-      stopAndRequireNeutral(blockedReason);
+      // Reconnection and invalid input always require a fresh neutral observation.
+      // For a continuing hardware fault, remember neutral seen while waiting;
+      // do not make the driver center a second time when sensors finally arrive.
+      boolean trustedInput = DriverStation.isTeleopEnabled() && controllerConnected
+          && Double.isFinite(forward) && Double.isFinite(strafe) && Double.isFinite(rotation);
+      if (!hardwareBlocked || !trustedInput) {
+        waitingForNeutral = true;
+      }
+      hardwareBlocked = true;
+      if (trustedInput && inputsNeutral(forward, strafe, rotation)) {
+        waitingForNeutral = false;
+      }
+      swerve.stop();
+      resetLimiters();
+      SmartDashboard.putBoolean("Drive/WaitingForNeutral", waitingForNeutral);
+      SmartDashboard.putString("Drive/Status", blockedReason);
+      SmartDashboard.putString("Drive/LastBlockedReason", blockedReason);
+      updateDashboard(new ChassisSpeeds());
+      return;
+    }
+    hardwareBlocked = false;
+
+    double loopGap = Timer.getFPGATimestamp() - lastLimiterTimestampSeconds;
+    SmartDashboard.putNumber("Drive/LoopElapsedSeconds", loopGap);
+    if (loopGap >= Constants.SwerveConstants.kMotorSafetyExpirationSeconds) {
+      // The motor watchdog may already have stopped ze output pls restart ramp
+      // from rest, without latching a neutral interlock forda isolated slow loop
+      loopGapCount++;
+      SmartDashboard.putNumber("Drive/LoopGapCount", loopGapCount);
+      SmartDashboard.putString("Drive/LastBlockedReason", "Drive loop gap: ramp restarted");
+      swerve.stop();
+      resetLimiters();
+      updateDashboard(new ChassisSpeeds());
+      SmartDashboard.putString("Drive/Status", "Drive loop gap: ramp restarted");
       return;
     }
 
@@ -148,10 +184,6 @@ public class SwerveDrive extends Command {
     }
     if (!swerve.isReady()) return "Modules not ready: check Swerve and module diagnostics";
     if (fieldRelativeMode && !swerve.hasHeading()) return "Field heading unavailable";
-    if (Timer.getFPGATimestamp() - lastLimiterTimestampSeconds
-        >= Constants.SwerveConstants.kMotorSafetyExpirationSeconds) {
-      return "Drive loop gap: center sticks to rearm";
-    }
     return null;
   }
 

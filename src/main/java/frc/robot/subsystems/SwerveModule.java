@@ -10,6 +10,7 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.hardware.ParentDevice;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.ctre.phoenix6.signals.SensorDirectionValue;
@@ -79,6 +80,13 @@ public class SwerveModule {
   private double driveCorrectionVolts;
   // Last capped drive voltage.
   private double driveVolts;
+  private double requestedDriveVolts;
+  private final DriveVoltageLimiter driveVoltageLimiter = new DriveVoltageLimiter(
+      Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond,
+      Constants.SwerveConstants.kDriveVoltageMaxStepSeconds,
+      Constants.SwerveConstants.kMotorSafetyExpirationSeconds, Timer::getFPGATimestamp);
+  private int deviceResetCount;
+  private String lastControlError = "None";
   // Last capped steering voltage.
   private double turnVolts;
 
@@ -132,6 +140,18 @@ public class SwerveModule {
         encoder.getFault_BadMagnet(),
         driveMotor.getPosition(), driveMotor.getVelocity(),
         turnMotor.getPosition());
+    StatusCode diagnosticStatus = BaseStatusSignal.setUpdateFrequencyForAll(20.0,
+        driveMotor.getSupplyVoltage(), driveMotor.getSupplyCurrent(), driveMotor.getStatorCurrent(),
+        turnMotor.getSupplyVoltage(), turnMotor.getStatorCurrent(),
+        driveMotor.getFault_SupplyCurrLimit(), driveMotor.getFault_StatorCurrLimit(),
+        driveMotor.getFault_Undervoltage(), driveMotor.getFault_BridgeBrownout(),
+        turnMotor.getFault_Undervoltage());
+    StatusCode busStatus = ParentDevice.optimizeBusUtilizationForAll(driveMotor, turnMotor, encoder);
+    if (!diagnosticStatus.isOK() || !busStatus.isOK()) {
+      // Missing optional telemetry must not prevent driving with ze good control a feedback
+      DriverStation.reportWarning(name + " diagnostic CAN setup incomplete: diagnostics="
+          + diagnosticStatus + ", bus=" + busStatus, false);
+    }
     turnControllerInitialized = false;
     turnWithinTolerance = false;
     turnOptimizationReversed = false;
@@ -160,6 +180,10 @@ public class SwerveModule {
           Constants.SwerveConstants.kTurnSupplyLimitAmps;
     }
     motorConfiguration.CurrentLimits.SupplyCurrentLimitEnable = true;
+    // Use the declared constant limit, without a vendor specific crap limit
+    motorConfiguration.CurrentLimits.SupplyCurrentLowerLimit =
+        motorConfiguration.CurrentLimits.SupplyCurrentLimit;
+    motorConfiguration.CurrentLimits.SupplyCurrentLowerTime = 0.0;
     if (isDriveMotor) {
       motorConfiguration.CurrentLimits.StatorCurrentLimit =
           Constants.SwerveConstants.kDriveStatorLimitAmps;
@@ -203,6 +227,8 @@ public class SwerveModule {
         || !isPositiveFinite(Constants.SwerveConstants.kMaxDriveVolts)
         || !Double.isFinite(Constants.SwerveConstants.kDriveKV)
         || Constants.SwerveConstants.kDriveKV < 0.0
+        || !Double.isFinite(Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond)
+        || Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond < 0.0
         || !isPositiveFinite(Constants.SwerveConstants.kMaxTurnVolts)) {
       stop();
       return false;
@@ -256,6 +282,10 @@ public class SwerveModule {
       return false;
     }
     Rotation2d angle = getAngle();
+    if (angle == null) {
+      stop();
+      return false;
+    }
     if (!turnControllerInitialized) {
       resetTurnController(angle);
       turnControllerInitialized = true;
@@ -263,7 +293,8 @@ public class SwerveModule {
     moving = false;
     previousDriveTarget = 0.0;
     targetSpeedMetersPerSecond = 0.0;
-    driveSpeedScale = driveBaseVolts = driveCorrectionVolts = driveVolts = 0.0;
+    driveSpeedScale = driveBaseVolts = driveCorrectionVolts = driveVolts = requestedDriveVolts = 0.0;
+    driveVoltageLimiter.reset();
     lastTargetAngle = target;
     return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(0.0)))
         && setAngle(angle, target);
@@ -286,6 +317,7 @@ public class SwerveModule {
     }
     driveVolts = MathUtil.clamp(volts, -Constants.SwerveConstants.kMaxDriveVolts,
         Constants.SwerveConstants.kMaxDriveVolts);
+    requestedDriveVolts = driveVolts;
     return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(driveVolts)));
   }
 
@@ -421,7 +453,10 @@ public class SwerveModule {
     }
     driveCorrectionVolts = 0.0;
     if (Math.abs(targetSpeed) < 1e-6) {
+      // Alignment cutoff deliberately bypasses the ramp: do not drive sideways.
+      requestedDriveVolts = 0.0;
       driveVolts = 0.0;
+      driveVoltageLimiter.reset();
       return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(0.0)));
     }
     if (Constants.SwerveConstants.kEnableDriveVelocityCorrection) {
@@ -440,12 +475,16 @@ public class SwerveModule {
           -Constants.SwerveConstants.kMaxDriveCorrectionVolts,
           Constants.SwerveConstants.kMaxDriveCorrectionVolts);
     }
-    driveVolts =
+    requestedDriveVolts =
         finiteOrZero(
             MathUtil.clamp(
                 driveBaseVolts + driveCorrectionVolts,
                 -Constants.SwerveConstants.kMaxDriveVolts,
                 Constants.SwerveConstants.kMaxDriveVolts));
+    // Chassis input limiting alone cannot bound steps caused by speed feedback,
+    // optimization, or cosine compensation as steering catches up. Limit the
+    // final voltage too. Faults and explicit stop() bypass this normal-drive ramp.
+    driveVolts = driveVoltageLimiter.calculate(requestedDriveVolts);
     return acceptControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(driveVolts)));
   }
 
@@ -463,6 +502,7 @@ public class SwerveModule {
     if (status.isOK()) {
       return true;
     }
+    lastControlError = status.toString();
     if (configurationSuccessful) {
       DriverStation.reportError(name + " motor request failed: " + status
           + "; disable to reconfigure.", false);
@@ -508,6 +548,10 @@ public class SwerveModule {
     if (driveMotor == null) {
       return;
     }
+    // Log the previous loop's demand at control-loop rate, including stop events.
+    // Phoenix also records actual motor voltage, current, and sensor feedback.
+    SignalLogger.writeDouble(name + "/DriveRequestedVolts", requestedDriveVolts, "V");
+    SignalLogger.writeDouble(name + "/DriveCommandVolts", driveVolts, "V");
     boolean deviceReset = driveMotor.hasResetOccurred();
     // Read every reset flag; each read clears it.
     if (turnMotor.hasResetOccurred()) {
@@ -517,6 +561,7 @@ public class SwerveModule {
       deviceReset = true;
     }
     if (deviceReset) {
+      deviceResetCount++;
       configurationSuccessful = false;
       nextConfigurationRetrySeconds = Timer.getFPGATimestamp() + 1.0;
       stop();
@@ -542,6 +587,7 @@ public class SwerveModule {
 
   // Stops both motors and clears steering history. No active angle hold.
   public void stop() {
+    driveVoltageLimiter.reset();
     moving = false;
     previousDriveTarget = 0.0;
     turnMovingAwayFromTarget = false;
@@ -551,6 +597,7 @@ public class SwerveModule {
     driveBaseVolts = 0.0;
     driveCorrectionVolts = 0.0;
     driveVolts = 0.0;
+    requestedDriveVolts = 0.0;
     Rotation2d angle = getAngle();
     if (driveMotor != null) {
       recordControlStatus(driveMotor.setControl(driveVoltageRequest.withOutput(0.0)));
@@ -577,6 +624,9 @@ public class SwerveModule {
     SmartDashboard.putBoolean(name + "/DriveMeasurementValid", speedReady());
     SmartDashboard.putBoolean(name + "/Ready", isReady());
     SmartDashboard.putBoolean(name + "/ConfigurationOK", configurationSuccessful);
+    SmartDashboard.putString(name + "/ReadinessReason", getReadinessReason());
+    SmartDashboard.putString(name + "/LastControlError", lastControlError);
+    SmartDashboard.putNumber(name + "/DeviceResetCount", deviceResetCount);
     SmartDashboard.putBoolean(name + "/OptimizationReversed", turnOptimizationReversed);
     double measuredSpeed = Double.NaN;
     if (speedReady()) {
@@ -587,6 +637,9 @@ public class SwerveModule {
     SmartDashboard.putNumber(name + "/BaseVolts", driveBaseVolts);
     SmartDashboard.putNumber(name + "/PVolts", driveCorrectionVolts);
     SmartDashboard.putNumber(name + "/DriveVolts", driveVolts);
+    SmartDashboard.putNumber(name + "/RequestedDriveVolts", requestedDriveVolts);
+    SmartDashboard.putBoolean(name + "/DriveVoltageSlewLimited",
+        Math.abs(requestedDriveVolts - driveVolts) > 1e-6);
     double angleRadians = Double.NaN;
     if (angle != null) {
       angleRadians = angle.getRadians();
@@ -625,6 +678,10 @@ public class SwerveModule {
     if (turnMotor != null) {
       SmartDashboard.putNumber(name + "/TurnStatorCurrentAmps",
           turnMotor.getStatorCurrent().getValueAsDouble());
+      SmartDashboard.putNumber(name + "/TurnSupplyVolts",
+          turnMotor.getSupplyVoltage().getValueAsDouble());
+      SmartDashboard.putBoolean(name + "/TurnUndervoltage",
+          turnMotor.getFault_Undervoltage().getValue());
     }
     double supplyCurrentAmps = 0.0;
     double statorCurrentAmps = 0.0;
@@ -633,11 +690,34 @@ public class SwerveModule {
           driveMotor.getMotorVoltage().getValueAsDouble());
       SmartDashboard.putNumber(name + "/DriveSupplyVolts",
           driveMotor.getSupplyVoltage().getValueAsDouble());
+      SmartDashboard.putBoolean(name + "/DriveSupplyCurrentLimited",
+          driveMotor.getFault_SupplyCurrLimit().getValue());
+      SmartDashboard.putBoolean(name + "/DriveStatorCurrentLimited",
+          driveMotor.getFault_StatorCurrLimit().getValue());
+      SmartDashboard.putBoolean(name + "/DriveUndervoltage",
+          driveMotor.getFault_Undervoltage().getValue());
+      SmartDashboard.putBoolean(name + "/DriveBridgeBrownout",
+          driveMotor.getFault_BridgeBrownout().getValue());
       supplyCurrentAmps = finiteOrZero(driveMotor.getSupplyCurrent().getValueAsDouble());
       statorCurrentAmps = finiteOrZero(driveMotor.getStatorCurrent().getValueAsDouble());
     }
     SmartDashboard.putNumber(name + "/DriveSupplyCurrentAmps", supplyCurrentAmps);
     SmartDashboard.putNumber(name + "/DriveStatorCurrentAmps", statorCurrentAmps);
+  }
+
+  /** Identifies which interlock prevents driving instead of reporting only false. */
+  public String getReadinessReason() {
+    if (driveMotor == null) return "Hardware disabled: invalid CAN configuration";
+    if (!configurationSuccessful) return "Configuration failed or device reset: disable to retry";
+    if (getAngle() == null) return "CANcoder angle/magnet fault or stale feedback";
+    if (!speedReady()) return "Drive velocity unavailable or invalid wheel configuration";
+    if (!Double.isFinite(getTurnRateRadPerSec())) return "CANcoder velocity unavailable";
+    var position = driveMotor.getPosition();
+    if (!isFresh(position) || !Double.isFinite(position.getValueAsDouble())) {
+      return "Drive position unavailable";
+    }
+    if (!isFresh(turnMotor.getPosition())) return "Steering motor feedback unavailable";
+    return "Ready";
   }
 
   // Shows hardware settings and forward calibration offset.

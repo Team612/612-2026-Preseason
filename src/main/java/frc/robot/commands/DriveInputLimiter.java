@@ -37,6 +37,24 @@ final class DriveInputLimiter {
     }
     rotation = MathUtil.applyDeadband(MathUtil.clamp(rotation, -1.0, 1.0), deadband);
 
+    // Limit the requested chassis motion BEFORE storing slew history. Otherwise the
+    // history winds up beyond feasible wheel speed and releasing rotation can
+    // suddenly accelerate translation
+    // |translation| +  da |omega| * radius bounds every wheel at every heading trust it works
+    // keep field relative history feasible
+    // as the chassis rotates under a fixed field translation demand
+    double radius = Math.hypot(Constants.SwerveConstants.kWheelBaseMeters / 2.0,
+        Constants.SwerveConstants.kTrackWidthMeters / 2.0);
+    double translationDemand = Math.hypot(forward * Constants.OperatorConstants.kForwardSpeedScale,
+        strafe * Constants.OperatorConstants.kStrafeSpeedScale);
+    double rotationDemand = Math.abs(rotation * Constants.OperatorConstants.kRotationSpeedScale)
+        * Constants.SwerveConstants.kMaxAngularSpeedRadPerSec * radius
+        / Constants.SwerveConstants.kMaxSpeedMetersPerSecond;
+    double scale = Math.max(1.0, translationDemand + rotationDemand);
+    forward /= scale;
+    strafe /= scale;
+    rotation /= scale;
+
     Translation2d requestedTranslation = new Translation2d(forward, strafe);
     Translation2d change = requestedTranslation.minus(limitedTranslation);
     // Only a reduction along the same direction is braking. Direction changes
