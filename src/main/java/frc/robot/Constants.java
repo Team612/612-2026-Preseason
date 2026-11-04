@@ -105,14 +105,14 @@ public final class Constants {
     public static final double kRotationSpeedScale = 1.0;
 
     // Normalized input change per sec
-    public static final double kTranslationSlewRatePerSecond = 1.0;
+    public static final double kTranslationSlewRatePerSecond = 6.0;
 
-    public static final double kRotationSlewRatePerSecond = 1.0;
+    public static final double kRotationSlewRatePerSecond = 6.0;
 
-    // Centered stick braking rates // VERIFY on da floor
-    public static final double kTranslationReleaseSlewRatePerSecond = 2.0;
+    // Centered stick braking rates // VERITY on da floor
+    public static final double kTranslationReleaseSlewRatePerSecond = 10.0;
 
-    public static final double kRotationReleaseSlewRatePerSecond = 2.0;
+    public static final double kRotationReleaseSlewRatePerSecond = 10.0;
 
     // Caps elapsed time to prevent input jumps after a delay.
     public static final double kMaxLimiterStepSeconds = 0.04;
