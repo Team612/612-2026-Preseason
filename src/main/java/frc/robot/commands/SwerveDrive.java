@@ -30,8 +30,10 @@ public class SwerveDrive extends Command {
   private double lastLimiterTimestampSeconds;
   // True at startup: translate relative to field heading rather than the robot nose.
   private boolean fieldRelativeMode = true;
-  // Prevents held sticks from restarting motion after enable, a fault, or a long loop gap.
+  // Prevents held sticks from starting motion after enable, disconnect, or a hardware fault.
   private boolean waitingForNeutral = true;
+  private boolean hardwareBlocked;
+  private int loopGapCount;
 
   /**
    * Receives axis readers and reserves the drivetrain so competing drive commands cannot run
@@ -54,7 +56,8 @@ public class SwerveDrive extends Command {
   /** Stops previous output and requires neutral sticks whenever this command starts. */
   @Override
   public void initialize() {
-    stopAndRequireNeutral();
+    hardwareBlocked = false;
+    stopAndRequireNeutral("Center sticks to arm drive");
   }
 
   // check sensors and shape inputs
@@ -74,72 +77,114 @@ public class SwerveDrive extends Command {
     SmartDashboard.putNumber("Drive/StrafeInput", strafe);
     SmartDashboard.putNumber("Drive/RotationInput", rotation);
 
-    // if the driverstation is not in teleop or the controller isnt connceted or swerve is not ready or the rest, stop and wait for neutral joystick
-    if (!DriverStation.isTeleopEnabled() || !controllerConnected || !swerve.isReady()
-        || (fieldRelativeMode && !swerve.hasHeading())
-        || !Double.isFinite(forward)
-        || !Double.isFinite(strafe)
-        || !Double.isFinite(rotation)) {
-      stopAndRequireNeutral();
+    String blockedReason = getBlockedReason(forward, strafe, rotation, controllerConnected);
+    if (blockedReason != null) {
+      // Reconnection and invalid input always require a fresh neutral observation.
+      // For a continuing hardware fault, remember neutral seen while waiting;
+      // do not make the driver center a second time when sensors finally arrive.
+      boolean trustedInput = DriverStation.isTeleopEnabled() && controllerConnected
+          && Double.isFinite(forward) && Double.isFinite(strafe) && Double.isFinite(rotation);
+      if (!hardwareBlocked || !trustedInput) {
+        waitingForNeutral = true;
+      }
+      hardwareBlocked = true;
+      if (trustedInput && inputsNeutral(forward, strafe, rotation)) {
+        waitingForNeutral = false;
+      }
+      swerve.stop();
+      resetLimiters();
+      SmartDashboard.putBoolean("Drive/WaitingForNeutral", waitingForNeutral);
+      SmartDashboard.putString("Drive/Status", blockedReason);
+      SmartDashboard.putString("Drive/LastBlockedReason", blockedReason);
+      updateDashboard(new ChassisSpeeds());
       return;
     }
+    hardwareBlocked = false;
 
-    // prevent jumps
-    if (Timer.getFPGATimestamp() - lastLimiterTimestampSeconds
-        >= Constants.SwerveConstants.kMotorSafetyExpirationSeconds) {
-      stopAndRequireNeutral();
+    double loopGap = Timer.getFPGATimestamp() - lastLimiterTimestampSeconds;
+    SmartDashboard.putNumber("Drive/LoopElapsedSeconds", loopGap);
+    if (loopGap >= Constants.SwerveConstants.kMotorSafetyExpirationSeconds) {
+      // The motor watchdog may already have stopped ze output pls restart ramp
+      // from rest, without latching a neutral interlock forda isolated slow loop
+      loopGapCount++;
+      SmartDashboard.putNumber("Drive/LoopGapCount", loopGapCount);
+      SmartDashboard.putString("Drive/LastBlockedReason", "Drive loop gap: ramp restarted");
+      swerve.stop();
+      resetLimiters();
+      updateDashboard(new ChassisSpeeds());
+      SmartDashboard.putString("Drive/Status", "Drive loop gap: ramp restarted");
       return;
     }
 
     if (waitingForNeutral) {
       resetLimiters();
       swerve.stop();
-      if (controlsNeutral()) {
+      if (inputsNeutral(forward, strafe, rotation)) {
         waitingForNeutral = false;
       }
       SmartDashboard.putBoolean("Drive/WaitingForNeutral", waitingForNeutral);
+      SmartDashboard.putString("Drive/Status",
+          waitingForNeutral ? "Center sticks to arm drive" : "Ready");
       updateDashboard(new ChassisSpeeds());
       return;
     }
 
+    SmartDashboard.putString("Drive/Status", "Ready");
     ChassisSpeeds requestedSpeeds = getSpeeds(forward, strafe, rotation);
     updateDashboard(requestedSpeeds);
 
     if (fieldRelativeMode) {
       if (!swerve.driveOperatorRelative(requestedSpeeds)) {
-        stopAndRequireNeutral();
+        stopAndRequireNeutral("Drivetrain rejected command");
       }
     } else {
       if (!swerve.drive(requestedSpeeds)) {
-        stopAndRequireNeutral();
+        stopAndRequireNeutral("Drivetrain rejected command");
       }
     }
   }
 
-  // to look over again, 
+  /** Switches immediately while moving, preserving the current physical velocity demand. */
   public void toggleDriveMode() {
-    if (controlsNeutral() && swerve.isStopped()) {
-      // Robot-relative driving can still work when the gyro is unavailable.
-      if (!fieldRelativeMode && !swerve.hasHeading()) {
-        DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false);
-        return;
-      }
-      fieldRelativeMode = !fieldRelativeMode;
-      resetLimiters();
-    } else {
-      DriverStation.reportWarning("Center the sticks and stop before changing drive mode.", false);
+    var heading = swerve.getOperatorRelativeHeading();
+    if (!fieldRelativeMode && heading == null) {
+      DriverStation.reportWarning("Field-relative drive requires a valid gyro reading.", false);
+      return;
     }
+    if (heading != null) {
+      inputLimiter.rotateReferenceFrame(fieldRelativeMode ? heading.unaryMinus() : heading);
+    } else {
+      // Leaving field mode remains possible after loss of heading.
+      resetLimiters();
+    }
+    fieldRelativeMode = !fieldRelativeMode;
+    SmartDashboard.putBoolean("Drive/FieldRelativeMode", fieldRelativeMode);
   }
 
-  // Checks controller connection and both deadbands before changing mode or resetting heading (should help)
+  // Neutral is still required for heading resets and characterization.
   public boolean controlsNeutral() {
     double forward = forwardSupplier.getAsDouble();
     double strafe = strafeSupplier.getAsDouble();
     double rotation = rotationSupplier.getAsDouble();
-    return controllerConnectedSupplier.getAsBoolean()
-        && Double.isFinite(forward) && Double.isFinite(strafe) && Double.isFinite(rotation)
+    return controllerConnectedSupplier.getAsBoolean() && inputsNeutral(forward, strafe, rotation);
+  }
+
+  private static boolean inputsNeutral(double forward, double strafe, double rotation) {
+    return Double.isFinite(forward) && Double.isFinite(strafe) && Double.isFinite(rotation)
         && Math.hypot(forward, strafe) <= Constants.OperatorConstants.kDeadband
         && Math.abs(rotation) <= Constants.OperatorConstants.kDeadband;
+  }
+
+  private String getBlockedReason(
+      double forward, double strafe, double rotation, boolean controllerConnected) {
+    if (!DriverStation.isTeleopEnabled()) return "Teleop not enabled";
+    if (!controllerConnected) return "Controller disconnected";
+    if (!Double.isFinite(forward) || !Double.isFinite(strafe) || !Double.isFinite(rotation)) {
+      return "Invalid controller input";
+    }
+    if (!swerve.isReady()) return "Modules not ready: check Swerve and module diagnostics";
+    if (fieldRelativeMode && !swerve.hasHeading()) return "Field heading unavailable";
+    return null;
   }
 
   
@@ -155,7 +200,8 @@ public class SwerveDrive extends Command {
 
   //Stops immediately after a fault
   
-  private void stopAndRequireNeutral() {
+  private void stopAndRequireNeutral(String reason) {
+    SmartDashboard.putString("Drive/Status", reason);
     waitingForNeutral = true;
     swerve.stop();
     resetLimiters();
@@ -182,6 +228,6 @@ public class SwerveDrive extends Command {
   // Stops the drivetrain when this command finishes or another command interrupts it
   @Override
   public void end(boolean interrupted) {
-    stopAndRequireNeutral();
+    stopAndRequireNeutral("Drive command ended");
   }
 }

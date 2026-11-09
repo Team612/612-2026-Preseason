@@ -72,6 +72,10 @@ public class Swerve extends SubsystemBase {
     if (!yawStatus.isOK()) {
       DriverStation.reportWarning("Pigeon yaw update configuration failed: " + yawStatus, false);
     }
+    var gyroBusStatus = gyro.optimizeBusUtilization();
+    if (!gyroBusStatus.isOK()) { // houston we are NOT OKAY MAYDAY
+      DriverStation.reportWarning("Pigeon bus optimization failed: " + gyroBusStatus, false);
+    }
     Constants.ModuleConfiguration[] configurations = {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
@@ -187,16 +191,20 @@ public class Swerve extends SubsystemBase {
     return drive(ChassisSpeeds.fromFieldRelativeSpeeds(fieldRelativeSpeeds, heading));
   }
 
+  /** Robot heading relative to the driver's alliance perspective, or null if unavailable. */
+  public Rotation2d getOperatorRelativeHeading() {
+    Rotation2d heading = readHeading();
+    return heading == null ? null : heading.minus(operatorPerspective);
+  }
+
   /** Driver translation is relative to the alliance wall; autonomous uses field coordinates. */
   public boolean driveOperatorRelative(ChassisSpeeds speeds) {
-    if (!validSpeeds(speeds)) {
+    Rotation2d heading = getOperatorRelativeHeading();
+    if (heading == null || !validSpeeds(speeds)) {
       stop();
       return false;
     }
-    var translation = new edu.wpi.first.math.geometry.Translation2d(
-        speeds.vxMetersPerSecond, speeds.vyMetersPerSecond).rotateBy(operatorPerspective);
-    return driveFieldRelative(new ChassisSpeeds(
-        translation.getX(), translation.getY(), speeds.omegaRadiansPerSecond));
+    return drive(ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading));
   }
 
   public boolean pointWheelsAt(Rotation2d direction) {
@@ -526,6 +534,13 @@ public class Swerve extends SubsystemBase {
     SmartDashboard.putNumber("Swerve/CommandedVyMetersPerSecond", commandedSpeeds.vyMetersPerSecond);
     SmartDashboard.putNumber("Swerve/CommandedOmegaRadiansPerSecond", commandedSpeeds.omegaRadiansPerSecond);
     SmartDashboard.putNumber("Swerve/BatteryVoltage", RobotController.getBatteryVoltage());
+    SmartDashboard.putBoolean("Swerve/BrownedOut", RobotController.isBrownedOut());
+    var can = RobotController.getCANStatus();
+    SmartDashboard.putNumber("Swerve/CANUtilization", can.percentBusUtilization);
+    SmartDashboard.putNumber("Swerve/CANBusOffCount", can.busOffCount);
+    SmartDashboard.putNumber("Swerve/CANTxFullCount", can.txFullCount);
+    SmartDashboard.putNumber("Swerve/CANReceiveErrorCount", can.receiveErrorCount);
+    SmartDashboard.putNumber("Swerve/CANTransmitErrorCount", can.transmitErrorCount);
     SmartDashboard.putBoolean("Swerve/HardwareEnabled", hardwareEnabled);
     Rotation2d fieldHeading = readHeading();
     SmartDashboard.putBoolean("Swerve/PigeonConnected", fieldHeading != null);
