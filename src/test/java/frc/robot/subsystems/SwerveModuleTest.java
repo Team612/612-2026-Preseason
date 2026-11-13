@@ -143,7 +143,19 @@ class SwerveModuleTest {
     double previous = 0;
     for (int i = 0; i < 60; i++) {
       // Exercise lagging and overshooting feedback as supply falls through 11.75 V (guess)
-      updateSensors(i < 20 ? 12.5 : 11.5, (i / 10) % 2 == 0 ? 0.0 : 2.0);
+      double supplyVolts;
+      if (i < 20) {
+        supplyVolts = 12.5;
+      } else {
+        supplyVolts = 11.5;
+      }
+      double velocity;
+      if ((i / 10) % 2 == 0) {
+        velocity = 0.0;
+      } else {
+        velocity = 2.0;
+      }
+      updateSensors(supplyVolts, velocity);
       assertTrue(module.setState(new SwerveModuleState(1.0, Rotation2d.kZero)));
       double next = field("driveVolts", Double.class);
       if (Constants.SwerveConstants.kDriveVoltageSlewRateVoltsPerSecond == 0.0) {
@@ -165,7 +177,13 @@ class SwerveModuleTest {
         * Constants.SwerveConstants.kDriveVoltageMaxStepSeconds;
     double restarted = field("driveVolts", Double.class);
     assertTrue(restarted > 0.0);
-    assertTrue(restarted <= (firstStep == 0.0 ? requested : Math.min(requested, firstStep)) + 1e-9);
+    double maximumRestartedVolts;
+    if (firstStep == 0.0) {
+      maximumRestartedVolts = requested;
+    } else {
+      maximumRestartedVolts = Math.min(requested, firstStep);
+    }
+    assertTrue(restarted <= maximumRestartedVolts + 1e-9);
   }
 
   @Test

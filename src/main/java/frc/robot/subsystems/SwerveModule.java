@@ -203,12 +203,17 @@ public class SwerveModule {
     } else {
       motorConfiguration.MotorOutput.Inverted = InvertedValue.CounterClockwise_Positive;
     }
-    motorConfiguration.OpenLoopRamps.VoltageOpenLoopRampPeriod = isDriveMotor
-        ? Constants.SwerveConstants.kDriveOpenLoopRampSeconds
-        : Constants.SwerveConstants.kTurnOpenLoopRampSeconds;
-    motorConfiguration.ClosedLoopRamps.VoltageClosedLoopRampPeriod = isDriveMotor
-        ? Constants.SwerveConstants.kDriveClosedLoopRampSeconds
-        : Constants.SwerveConstants.kTurnClosedLoopRampSeconds;
+    if (isDriveMotor) {
+      motorConfiguration.OpenLoopRamps.VoltageOpenLoopRampPeriod =
+          Constants.SwerveConstants.kDriveOpenLoopRampSeconds;
+      motorConfiguration.ClosedLoopRamps.VoltageClosedLoopRampPeriod =
+          Constants.SwerveConstants.kDriveClosedLoopRampSeconds;
+    } else {
+      motorConfiguration.OpenLoopRamps.VoltageOpenLoopRampPeriod =
+          Constants.SwerveConstants.kTurnOpenLoopRampSeconds;
+      motorConfiguration.ClosedLoopRamps.VoltageClosedLoopRampPeriod =
+          Constants.SwerveConstants.kTurnClosedLoopRampSeconds;
+    }
     motorConfiguration.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     return motorConfiguration;
   }
@@ -330,7 +335,11 @@ public class SwerveModule {
   public SwerveModuleState getState() {
     Rotation2d angle = getAngle();
     double speed = getSpeed();
-    return angle == null || !Double.isFinite(speed) ? null : new SwerveModuleState(speed, angle);
+    if (angle == null || !Double.isFinite(speed)) {
+      return null;
+    } else {
+      return new SwerveModuleState(speed, angle);
+    }
   }
 
   public SwerveModuleState getTargetState() {

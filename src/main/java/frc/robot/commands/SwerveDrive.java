@@ -81,7 +81,7 @@ public class SwerveDrive extends Command {
     if (blockedReason != null) {
       // Reconnection and invalid input always require a fresh neutral observation.
       // For a continuing hardware fault, remember neutral seen while waiting;
-      // do not make the driver center a second time when sensors finally arrive.
+      // do not make the driver center a second time when sensors finally arrive (hated ts)
       boolean trustedInput = DriverStation.isTeleopEnabled() && controllerConnected
           && Double.isFinite(forward) && Double.isFinite(strafe) && Double.isFinite(rotation);
       if (!hardwareBlocked || !trustedInput) {
@@ -123,8 +123,11 @@ public class SwerveDrive extends Command {
         waitingForNeutral = false;
       }
       SmartDashboard.putBoolean("Drive/WaitingForNeutral", waitingForNeutral);
-      SmartDashboard.putString("Drive/Status",
-          waitingForNeutral ? "Center sticks to arm drive" : "Ready");
+      if (waitingForNeutral) {
+        SmartDashboard.putString("Drive/Status", "Center sticks to arm drive");
+      } else {
+        SmartDashboard.putString("Drive/Status", "Ready");
+      }
       updateDashboard(new ChassisSpeeds());
       return;
     }
@@ -152,7 +155,11 @@ public class SwerveDrive extends Command {
       return;
     }
     if (heading != null) {
-      inputLimiter.rotateReferenceFrame(fieldRelativeMode ? heading.unaryMinus() : heading);
+      if (fieldRelativeMode) {
+        inputLimiter.rotateReferenceFrame(heading.unaryMinus());
+      } else {
+        inputLimiter.rotateReferenceFrame(heading);
+      }
     } else {
       // Leaving field mode remains possible after loss of heading.
       resetLimiters();

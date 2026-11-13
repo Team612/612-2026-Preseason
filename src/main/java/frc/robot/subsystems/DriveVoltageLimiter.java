@@ -37,8 +37,11 @@ final class DriveVoltageLimiter {
       return voltage;
     }
     double step = rate * Math.min(elapsed, maxStepSeconds);
-    voltage = rate == 0.0 ? targetVolts
-        : voltage + MathUtil.clamp(targetVolts - voltage, -step, step);
+    if (rate == 0.0) {
+      voltage = targetVolts;
+    } else {
+      voltage = voltage + MathUtil.clamp(targetVolts - voltage, -step, step);
+    }
     return voltage;
   }
 

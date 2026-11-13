@@ -100,7 +100,12 @@ class DriveInputLimiterTest {
     var limiter = new DriveInputLimiter();
     ChassisSpeeds previous = new ChassisSpeeds();
     for (int i = 0; i < 240; i++) {
-      double direction = i < 120 ? 1.0 : -1.0;
+      double direction;
+      if (i < 120) {
+        direction = 1.0;
+      } else {
+        direction = -1.0;
+      }
       var next = limiter.calculate(direction, direction, direction, 0.02);
       var before = Constants.swerveKinematics.toSwerveModuleStates(previous);
       var after = Constants.swerveKinematics.toSwerveModuleStates(next);

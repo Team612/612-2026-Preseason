@@ -19,9 +19,12 @@ final class DriveInputLimiter {
       reset();
       return new ChassisSpeeds();
     }
-    elapsedSeconds = Double.isFinite(elapsedSeconds)
-        ? MathUtil.clamp(elapsedSeconds, 0.0, Constants.OperatorConstants.kMaxLimiterStepSeconds)
-        : 0.0;
+    if (Double.isFinite(elapsedSeconds)) {
+      elapsedSeconds = MathUtil.clamp(
+          elapsedSeconds, 0.0, Constants.OperatorConstants.kMaxLimiterStepSeconds);
+    } else {
+      elapsedSeconds = 0.0;
+    }
     double deadband = Constants.OperatorConstants.kDeadband;
     forward = MathUtil.clamp(forward, -1.0, 1.0);
     strafe = MathUtil.clamp(strafe, -1.0, 1.0);
@@ -58,7 +61,7 @@ final class DriveInputLimiter {
     Translation2d requestedTranslation = new Translation2d(forward, strafe);
     Translation2d change = requestedTranslation.minus(limitedTranslation);
     // Only a reduction along the same direction is braking. Direction changes
-    // and reversals retain the acceleration limit rather than getting a faster ramp.
+    // and reversals retain the acceleration limit rather than getting a faster ramp
     double cross = requestedTranslation.getX() * limitedTranslation.getY()
         - requestedTranslation.getY() * limitedTranslation.getX();
     double dot = requestedTranslation.getX() * limitedTranslation.getX()
@@ -67,23 +70,48 @@ final class DriveInputLimiter {
         && dot >= 0.0 && Math.abs(cross) < 1e-9;
     boolean rotationBraking = Math.abs(rotation) <= Math.abs(limitedRotation)
         && rotation * limitedRotation >= 0.0;
-    double translationRate = translationBraking
-        ? Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond
-        : Constants.OperatorConstants.kTranslationSlewRatePerSecond;
-    double rotationRate = rotationBraking
-        ? Constants.OperatorConstants.kRotationReleaseSlewRatePerSecond
-        : Constants.OperatorConstants.kRotationSlewRatePerSecond;
+    double translationRate;
+    if (translationBraking) {
+      translationRate = Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond;
+    } else {
+      translationRate = Constants.OperatorConstants.kTranslationSlewRatePerSecond;
+    }
+    double rotationRate;
+    if (rotationBraking) {
+      rotationRate = Constants.OperatorConstants.kRotationReleaseSlewRatePerSecond;
+    } else {
+      rotationRate = Constants.OperatorConstants.kRotationSlewRatePerSecond;
+    }
     double rotationChange = rotation - limitedRotation;
     double translationSeconds = change.getNorm() / translationRate;
     double rotationSeconds = Math.abs(rotationChange) / rotationRate;
     // Share accelerating demand; braking keeps its own fast ramp, even when
-    // the other stick requests acceleration. This avoids a long combined stop.
-    double accelerationSeconds = (translationBraking ? 0.0 : translationSeconds)
-        + (rotationBraking ? 0.0 : rotationSeconds);
-    double translationFraction = rampFraction(elapsedSeconds,
-        translationBraking ? translationSeconds : accelerationSeconds);
-    double rotationFraction = rampFraction(elapsedSeconds,
-        rotationBraking ? rotationSeconds : accelerationSeconds);
+    // the other stick requests acceleration. This avoids a long combined stop (problemo)
+    double translationAccelerationSeconds;
+    if (translationBraking) {
+      translationAccelerationSeconds = 0.0;
+    } else {
+      translationAccelerationSeconds = translationSeconds;
+    }
+    double rotationAccelerationSeconds;
+    if (rotationBraking) {
+      rotationAccelerationSeconds = 0.0;
+    } else {
+      rotationAccelerationSeconds = rotationSeconds;
+    }
+    double accelerationSeconds = translationAccelerationSeconds + rotationAccelerationSeconds;
+    double translationFraction;
+    if (translationBraking) {
+      translationFraction = rampFraction(elapsedSeconds, translationSeconds);
+    } else {
+      translationFraction = rampFraction(elapsedSeconds, accelerationSeconds);
+    }
+    double rotationFraction;
+    if (rotationBraking) {
+      rotationFraction = rampFraction(elapsedSeconds, rotationSeconds);
+    } else {
+      rotationFraction = rampFraction(elapsedSeconds, accelerationSeconds);
+    }
     limitedTranslation = limitedTranslation.plus(change.times(translationFraction));
     limitedRotation += rotationChange * rotationFraction;
     return new ChassisSpeeds(
@@ -99,10 +127,14 @@ final class DriveInputLimiter {
   }
 
   private static double rampFraction(double elapsedSeconds, double requiredSeconds) {
-    return requiredSeconds > 0.0 ? Math.min(1.0, elapsedSeconds / requiredSeconds) : 1.0;
+    if (requiredSeconds > 0.0) {
+      return Math.min(1.0, elapsedSeconds / requiredSeconds);
+    } else {
+      return 1.0;
+    }
   }
 
-  /** Expresses the existing translation demand in a new frame without stopping it. */
+  // Expresses the existing translation demand in a new frame without stopping it (should work now)
   void rotateReferenceFrame(Rotation2d rotation) {
     Translation2d scaled = new Translation2d(
         limitedTranslation.getX() * Constants.OperatorConstants.kForwardSpeedScale,

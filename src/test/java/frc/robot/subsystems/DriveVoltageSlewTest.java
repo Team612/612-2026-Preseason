@@ -62,7 +62,13 @@ class DriveVoltageSlewTest {
       var limiter = limiter(rate);
       step(limiter, 6, 0.04);
       assertEquals(0, step(limiter, 6, 0.11));
-      assertEquals(rate == 0 ? 6 : 0.48, step(limiter, 6, 0.02), 1e-9);
+      double expectedVolts;
+      if (rate == 0) {
+        expectedVolts = 6;
+      } else {
+        expectedVolts = 0.48;
+      }
+      assertEquals(expectedVolts, step(limiter, 6, 0.02), 1e-9);
     }
   }
 

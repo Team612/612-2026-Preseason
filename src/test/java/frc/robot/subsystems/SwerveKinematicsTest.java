@@ -25,9 +25,16 @@ class SwerveKinematicsTest {
                 <= Constants.SwerveConstants.kMaxSpeedMetersPerSecond + 1e-9);
           }
           var actual = Constants.swerveKinematics.toChassisSpeeds(states);
-          double scale = omega != 0 ? actual.omegaRadiansPerSecond / omega
-              : vx != 0 ? actual.vxMetersPerSecond / vx
-              : vy != 0 ? actual.vyMetersPerSecond / vy : 1;
+          double scale;
+          if (omega != 0) {
+            scale = actual.omegaRadiansPerSecond / omega;
+          } else if (vx != 0) {
+            scale = actual.vxMetersPerSecond / vx;
+          } else if (vy != 0) {
+            scale = actual.vyMetersPerSecond / vy;
+          } else {
+            scale = 1;
+          }
           assertTrue(scale > 0 && scale <= 1 + 1e-9);
           var expected = ChassisSpeeds.discretize(request.times(scale), Constants.kLoopPeriodSeconds);
           assertEquals(expected.vxMetersPerSecond, actual.vxMetersPerSecond, 1e-9);

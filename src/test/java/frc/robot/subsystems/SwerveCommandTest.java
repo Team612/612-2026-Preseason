@@ -67,8 +67,14 @@ class SwerveCommandTest {
       turns[i].getSimState().setSupplyVoltage(12);
       turns[i].getSimState().setRawRotorPosition(0);
       encoders[i].getSimState().setSupplyVoltage(12);
+      int encoderDirection;
+      if (config.encoderInverted()) {
+        encoderDirection = -1;
+      } else {
+        encoderDirection = 1;
+      }
       encoders[i].getSimState().setRawPosition(
-          config.encoderOffsetRotations() * (config.encoderInverted() ? -1 : 1));
+          config.encoderOffsetRotations() * encoderDirection);
       encoders[i].getSimState().setVelocity(0);
     }
     Timer.delay(0.02);
@@ -118,7 +124,13 @@ class SwerveCommandTest {
         mode(true, false);
         assertTrue(swerve.driveOperatorRelative(new ChassisSpeeds(0.5, 0.2, 0.3)));
         var actual = field(swerve, "commandedSpeeds", ChassisSpeeds.class);
-        double angle = Math.toRadians(yaw - (alliance == AllianceStationID.Red1 ? 180 : 0));
+        double allianceOffset;
+        if (alliance == AllianceStationID.Red1) {
+          allianceOffset = 180;
+        } else {
+          allianceOffset = 0;
+        }
+        double angle = Math.toRadians(yaw - allianceOffset);
         assertEquals(0.5 * Math.cos(angle) + 0.2 * Math.sin(angle), actual.vxMetersPerSecond, 1e-6);
         assertEquals(-0.5 * Math.sin(angle) + 0.2 * Math.cos(angle), actual.vyMetersPerSecond, 1e-6);
         assertEquals(0.3, actual.omegaRadiansPerSecond, 1e-6);

@@ -95,7 +95,11 @@ public class Telemetry {
         driveModuleTargets.set(targets);
         driveModulePositions.set(positions);
         driveTimestamp.set(timestamp);
-        driveOdometryFrequency.set(period > 0.0 ? 1.0 / period : 0.0);
+        if (period > 0.0) {
+            driveOdometryFrequency.set(1.0 / period);
+        } else {
+            driveOdometryFrequency.set(0.0);
+        }
 
         /* Also write to log file */
         SignalLogger.writeStruct("DriveState/Pose", Pose2d.struct, pose);
