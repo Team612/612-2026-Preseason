@@ -107,8 +107,8 @@ public final class Constants {
 
     // Normalized input change per second: about 0.33 s from rest to full demand.
     // Translation and rotation share this budget when commanded together.
-    public static final double kTranslationSlewRatePerSecond = 3.0;
-    public static final double kRotationSlewRatePerSecond = 3.0;
+    public static final double kTranslationSlewRatePerSecond = 3.20;
+    public static final double kRotationSlewRatePerSecond = 3.20;
 
     // Same-direction slowdowns and release brake in about 0.20 s from full demand.
     public static final double kTranslationReleaseSlewRatePerSecond = 5.0;
@@ -189,7 +189,7 @@ public final class Constants {
     public static final boolean kEnableDriveVelocityCorrection = true;
 
     // Steering PID gains; angles use radians.
-    public static final double kTurnP = 0.5;
+    public static final double kTurnP = 1.25;
 
     public static final double kTurnI = 0.0;
 
