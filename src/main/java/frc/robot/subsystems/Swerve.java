@@ -72,6 +72,10 @@ public class Swerve extends SubsystemBase {
     if (!yawStatus.isOK()) {
       DriverStation.reportWarning("Pigeon yaw update configuration failed: " + yawStatus, false);
     }
+    var gyroBusStatus = gyro.optimizeBusUtilization();
+    if (!gyroBusStatus.isOK()) { // houston we are NOT OKAY MAYDAY
+      DriverStation.reportWarning("Pigeon bus optimization failed: " + gyroBusStatus, false);
+    }
     Constants.ModuleConfiguration[] configurations = {
       Constants.SwerveConstants.kFrontLeft,
       Constants.SwerveConstants.kFrontRight,
@@ -187,16 +191,24 @@ public class Swerve extends SubsystemBase {
     return drive(ChassisSpeeds.fromFieldRelativeSpeeds(fieldRelativeSpeeds, heading));
   }
 
+  /** Robot heading relative to the driver's alliance perspective, or null if unavailable. */
+  public Rotation2d getOperatorRelativeHeading() {
+    Rotation2d heading = readHeading();
+    if (heading == null) {
+      return null;
+    } else {
+      return heading.minus(operatorPerspective);
+    }
+  }
+
   /** Driver translation is relative to the alliance wall; autonomous uses field coordinates. */
   public boolean driveOperatorRelative(ChassisSpeeds speeds) {
-    if (!validSpeeds(speeds)) {
+    Rotation2d heading = getOperatorRelativeHeading();
+    if (heading == null || !validSpeeds(speeds)) {
       stop();
       return false;
     }
-    var translation = new edu.wpi.first.math.geometry.Translation2d(
-        speeds.vxMetersPerSecond, speeds.vyMetersPerSecond).rotateBy(operatorPerspective);
-    return driveFieldRelative(new ChassisSpeeds(
-        translation.getX(), translation.getY(), speeds.omegaRadiansPerSecond));
+    return drive(ChassisSpeeds.fromFieldRelativeSpeeds(speeds, heading));
   }
 
   public boolean pointWheelsAt(Rotation2d direction) {
@@ -240,15 +252,28 @@ public class Swerve extends SubsystemBase {
   }
 
   public Optional<Pose2d> samplePoseAt(double timestampSeconds) {
-    return odometryInitialized ? odometry.sampleAt(timestampSeconds) : Optional.empty();
+    if (odometryInitialized) {
+      return odometry.sampleAt(timestampSeconds);
+    } else {
+      return Optional.empty();
+    }
   }
 
   /** Test-mode-only characterization. All modules stop together on any rejected output. */
   public Command sysId(boolean steer, boolean dynamic, SysIdRoutine.Direction direction) {
-    String name = steer ? "SwerveSteer" : "SwerveTranslation";
+    String name;
+    if (steer) {
+      name = "SwerveSteer";
+    } else {
+      name = "SwerveTranslation";
+    }
     SysIdRoutineLog stateLog = new SysIdRoutineLog(name);
-    double limit = steer ? Constants.SwerveConstants.kMaxTurnVolts
-        : Constants.SwerveConstants.kMaxDriveVolts;
+    double limit;
+    if (steer) {
+      limit = Constants.SwerveConstants.kMaxTurnVolts;
+    } else {
+      limit = Constants.SwerveConstants.kMaxDriveVolts;
+    }
     SysIdRoutine routine = new SysIdRoutine(
         new SysIdRoutine.Config(Volts.of(1).per(Second), Volts.of(Math.min(2.0, limit)),
             Seconds.of(Math.min(10.0, limit)), state -> {
@@ -261,15 +286,26 @@ public class Swerve extends SubsystemBase {
                 module.logCharacterization(log, steer);
               }
             }, this, name));
-    Command align = steer ? Commands.none() : run(() -> {
-      if (!pointWheelsAt(Rotation2d.kZero)) {
-        characterizationFailed = true;
-      }
-    }).until(this::allWheelsForward).withTimeout(3.0);
+    Command align;
+    if (steer) {
+      align = Commands.none();
+    } else {
+      align = run(() -> {
+        if (!pointWheelsAt(Rotation2d.kZero)) {
+          characterizationFailed = true;
+        }
+      }).until(this::allWheelsForward).withTimeout(3.0);
+    }
+    Command characterization;
+    if (dynamic) {
+      characterization = routine.dynamic(direction);
+    } else {
+      characterization = routine.quasistatic(direction);
+    }
     return runOnce(() -> {
       stop();
       characterizationFailed = false;
-    }).andThen(align, (dynamic ? routine.dynamic(direction) : routine.quasistatic(direction))
+    }).andThen(align, characterization
         .onlyIf(() -> !characterizationFailed && (steer || allWheelsForward())))
         .until(() -> characterizationFailed || !DriverStation.isTestEnabled() || !isReady())
         .finallyDo(this::stop)
@@ -322,8 +358,14 @@ public class Swerve extends SubsystemBase {
       }
     }
     double now = Timer.getFPGATimestamp();
+    double elapsedSeconds;
+    if (lastTelemetryTimestamp == 0.0) {
+      elapsedSeconds = 0.0;
+    } else {
+      elapsedSeconds = now - lastTelemetryTimestamp;
+    }
     telemetry.telemeterize(getPose(), KINEMATICS.toChassisSpeeds(states), states, targets,
-        positions, now, lastTelemetryTimestamp == 0.0 ? 0.0 : now - lastTelemetryTimestamp);
+        positions, now, elapsedSeconds);
     lastTelemetryTimestamp = now;
   }
 
@@ -478,8 +520,11 @@ public class Swerve extends SubsystemBase {
     publishTelemetry();
     if (!operatorPerspectiveApplied || DriverStation.isDisabled()) {
       DriverStation.getAlliance().ifPresent(alliance -> {
-        operatorPerspective = alliance == DriverStation.Alliance.Red
-            ? Rotation2d.k180deg : Rotation2d.kZero;
+        if (alliance == DriverStation.Alliance.Red) {
+          operatorPerspective = Rotation2d.k180deg;
+        } else {
+          operatorPerspective = Rotation2d.kZero;
+        }
         operatorPerspectiveApplied = true;
       });
     }
@@ -526,6 +571,13 @@ public class Swerve extends SubsystemBase {
     SmartDashboard.putNumber("Swerve/CommandedVyMetersPerSecond", commandedSpeeds.vyMetersPerSecond);
     SmartDashboard.putNumber("Swerve/CommandedOmegaRadiansPerSecond", commandedSpeeds.omegaRadiansPerSecond);
     SmartDashboard.putNumber("Swerve/BatteryVoltage", RobotController.getBatteryVoltage());
+    SmartDashboard.putBoolean("Swerve/BrownedOut", RobotController.isBrownedOut());
+    var can = RobotController.getCANStatus();
+    SmartDashboard.putNumber("Swerve/CANUtilization", can.percentBusUtilization);
+    SmartDashboard.putNumber("Swerve/CANBusOffCount", can.busOffCount);
+    SmartDashboard.putNumber("Swerve/CANTxFullCount", can.txFullCount);
+    SmartDashboard.putNumber("Swerve/CANReceiveErrorCount", can.receiveErrorCount);
+    SmartDashboard.putNumber("Swerve/CANTransmitErrorCount", can.transmitErrorCount);
     SmartDashboard.putBoolean("Swerve/HardwareEnabled", hardwareEnabled);
     Rotation2d fieldHeading = readHeading();
     SmartDashboard.putBoolean("Swerve/PigeonConnected", fieldHeading != null);
