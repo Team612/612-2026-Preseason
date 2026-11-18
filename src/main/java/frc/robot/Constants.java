@@ -2,6 +2,10 @@ package frc.robot;
 
 import com.ctre.phoenix6.CANBus;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
+import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 
 
@@ -282,6 +286,29 @@ public final class Constants {
       return canId >= 0 && canId <= 62;
     }
   }
+
+ public class AutoConstants {
+       public static final String frontCamera = "FrontCamera";
+       public static final String backCamera = "BackCamera";
+       public static final double maxVelocity = 4.5;
+       public static final double maxAcceleration = 1;
+       public static final double maxAngularVelocity = Math.PI;
+       public static final double maxAngularAcceleration = Math.PI/6;
+       public static final Transform3d frontCameraTransform = new Transform3d(new Translation3d(Units.inchesToMeters(7.5),Units.inchesToMeters(0),Units.inchesToMeters(8)), new Rotation3d());
+       public static final Transform3d backCameraTransform = new Transform3d(new Translation3d(Units.inchesToMeters(-15), Units.inchesToMeters(-12), Units.inchesToMeters(36)), new Rotation3d(0, Units.degreesToRadians(17), Units.degreesToRadians(180)));
+
+
+
+
+       //camera isnt centered with the intake
+       public static final double yApriltagDisplacementright = 0.18; // 0.20
+       public static final double yApriltagDisplacementleft = 0.20; // 0.20
+
+
+       public static final double xApriltagDisplacement = 0.20;
+   }
+
+
 
   // No instances needed.
   private Constants() {}
