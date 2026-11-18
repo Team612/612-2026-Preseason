@@ -8,6 +8,14 @@ import frc.robot.Constants;
 import org.junit.jupiter.api.Test;
 
 class DriveInputLimiterTest {
+  private static final double ACCELERATION_STEP =
+      Constants.OperatorConstants.kTranslationSlewRatePerSecond * 0.02;
+  private static final double ROTATION_STEP =
+      Constants.OperatorConstants.kRotationSlewRatePerSecond * 0.02;
+  private static final double TRANSLATION_RELEASE_STEP =
+      Constants.OperatorConstants.kTranslationReleaseSlewRatePerSecond * 0.02;
+  private static final double ROTATION_RELEASE_STEP =
+      Constants.OperatorConstants.kRotationReleaseSlewRatePerSecond * 0.02;
   private static final double SPEED = Constants.SwerveConstants.kMaxSpeedMetersPerSecond;
   private static final double OMEGA = Constants.SwerveConstants.kMaxAngularSpeedRadPerSec;
 
@@ -15,7 +23,7 @@ class DriveInputLimiterTest {
   void diagonalSharesAccelerationBudget() {
     var limiter = new DriveInputLimiter();
     var speed = limiter.calculate(1, 1, 0, 0.02);
-    assertEquals(0.06 * SPEED, Math.hypot(speed.vxMetersPerSecond, speed.vyMetersPerSecond), 1e-9);
+    assertEquals(ACCELERATION_STEP * SPEED, Math.hypot(speed.vxMetersPerSecond, speed.vyMetersPerSecond), 1e-9);
     assertEquals(speed.vxMetersPerSecond, speed.vyMetersPerSecond, 1e-9);
   }
 
@@ -25,8 +33,8 @@ class DriveInputLimiterTest {
     ChassisSpeeds before = new ChassisSpeeds();
     for (int i = 0; i < 120; i++) before = limiter.calculate(-1, 0, -1, 0.02);
     var speed = limiter.calculate(0.001, 0, 0.001, 0.02);
-    assertEquals(before.vxMetersPerSecond + 0.10 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(before.omegaRadiansPerSecond + 0.10 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals(before.vxMetersPerSecond + TRANSLATION_RELEASE_STEP * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(before.omegaRadiansPerSecond + ROTATION_RELEASE_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
     for (int i = 0; i < 60; i++) speed = limiter.calculate(0, 0, 0, 0.02);
     assertStopped(speed);
   }
@@ -35,8 +43,8 @@ class DriveInputLimiterTest {
   void longAndInvalidTimeStepsCannotJumpDemand() {
     var limiter = new DriveInputLimiter();
     var speed = limiter.calculate(1, 0, 1, 1.0);
-    assertEquals(0.06 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(0.06 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals(ACCELERATION_STEP * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(ROTATION_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
     for (double time : new double[] {-1, Double.NaN, Double.POSITIVE_INFINITY}) {
       var unchanged = limiter.calculate(1, 0, 1, time);
       assertEquals(speed.vxMetersPerSecond, unchanged.vxMetersPerSecond, 1e-9);
@@ -50,8 +58,8 @@ class DriveInputLimiterTest {
     ChassisSpeeds before = new ChassisSpeeds();
     for (int i = 0; i < 120; i++) before = limiter.calculate(1, 0, 1, 0.02);
     var speed = limiter.calculate(-1, 0, -1, 0.02);
-    assertEquals(before.vxMetersPerSecond - 0.03 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(before.omegaRadiansPerSecond - 0.03 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals(before.vxMetersPerSecond - 0.5 * ACCELERATION_STEP * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(before.omegaRadiansPerSecond - 0.5 * ROTATION_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
     limiter.reset();
     assertStopped(limiter.calculate(0, 0, 0, 0.02));
   }
@@ -62,7 +70,7 @@ class DriveInputLimiterTest {
     limiter.calculate(1, 1, 1, 0.02);
     assertStopped(limiter.calculate(Double.NaN, 0, 0, 0.02));
     var speed = limiter.calculate(1, 0, 0, 0.02);
-    assertEquals(0.06 * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(ACCELERATION_STEP * SPEED, speed.vxMetersPerSecond, 1e-9);
     assertStopped(limiter.calculate(0, Double.POSITIVE_INFINITY, 0, 0.02));
     assertStopped(limiter.calculate(0, 0, Double.NaN, 0.02));
   }
@@ -71,8 +79,8 @@ class DriveInputLimiterTest {
   void simultaneousTranslationAndRotationShareAccelerationBudget() {
     var limiter = new DriveInputLimiter();
     var speed = limiter.calculate(1, 0, 1, 0.02);
-    assertEquals(0.03 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(0.03 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals(0.5 * ACCELERATION_STEP * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(0.5 * ROTATION_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
     for (int i = 0; i < 120; i++) speed = limiter.calculate(1, 0, 1, 0.02);
     assertTrue(speed.vxMetersPerSecond > 0.0);
     assertTrue(speed.omegaRadiansPerSecond > 0.0);
@@ -91,8 +99,8 @@ class DriveInputLimiterTest {
     var limiter = new DriveInputLimiter();
     for (int i = 0; i < 60; i++) limiter.calculate(1, 0, 0, 0.02);
     var speed = limiter.calculate(1, 0, 1, 0.02);
-    assertEquals(0.90 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(0.06 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals((1.0 - TRANSLATION_RELEASE_STEP) * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(ROTATION_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
   }
 
   @Test
@@ -114,7 +122,7 @@ class DriveInputLimiterTest {
             - before[wheel].speedMetersPerSecond * before[wheel].angle.getCos();
         double dy = after[wheel].speedMetersPerSecond * after[wheel].angle.getSin()
             - before[wheel].speedMetersPerSecond * before[wheel].angle.getSin();
-        assertTrue(Math.hypot(dx, dy) <= 0.06 * SPEED + 1e-9);
+        assertTrue(Math.hypot(dx, dy) <= ACCELERATION_STEP * SPEED + 1e-9);
       }
       previous = next;
     }
@@ -134,8 +142,8 @@ class DriveInputLimiterTest {
     var limiter = new DriveInputLimiter();
     for (int i = 0; i < 60; i++) limiter.calculate(1, 0, 0, 0.02);
     var speed = limiter.calculate(0.5, 0, 1, 0.02);
-    assertEquals(0.90 * SPEED, speed.vxMetersPerSecond, 1e-9);
-    assertEquals(0.06 * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
+    assertEquals((1.0 - TRANSLATION_RELEASE_STEP) * SPEED, speed.vxMetersPerSecond, 1e-9);
+    assertEquals(ROTATION_STEP * OMEGA, speed.omegaRadiansPerSecond, 1e-9);
     for (int i = 0; i < 10; i++) speed = limiter.calculate(0.5, 0, 1, 0.02);
     assertTrue(speed.vxMetersPerSecond > 0.0);
     for (var state : Constants.swerveKinematics.toSwerveModuleStates(speed)) {
