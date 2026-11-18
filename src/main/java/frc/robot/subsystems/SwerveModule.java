@@ -24,6 +24,10 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.Constants;
+
+// warning, comments here are ai generated (this is the only file with that problem)
+
+// Controls one wheel and its steering.
 public class SwerveModule {
   // Dashboard and fault message
   private final String name;
