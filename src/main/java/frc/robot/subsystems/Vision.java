@@ -1,250 +1,246 @@
 package frc.robot.subsystems;
 
-
-import java.io.IOException;
+import edu.wpi.first.apriltag.AprilTagFieldLayout;
+import edu.wpi.first.apriltag.AprilTagFields;
+import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.VecBuilder;
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
+import edu.wpi.first.math.geometry.Transform3d;
+import edu.wpi.first.math.numbers.N1;
+import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Constants.VisionConstants;
 import java.util.List;
 import java.util.Optional;
-
-
 import org.photonvision.EstimatedRobotPose;
 import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonPoseEstimator;
-import org.photonvision.PhotonPoseEstimator.PoseStrategy;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
-
-import com.ctre.phoenix6.*;
-
-
-import edu.wpi.first.apriltag.AprilTagFieldLayout;
-import edu.wpi.first.apriltag.AprilTagFields;
-import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Pose3d;
-import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Transform2d;
-import edu.wpi.first.math.geometry.Transform3d;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
-import frc.robot.Constants;
 public class Vision extends SubsystemBase {
- private static AprilTagFieldLayout aprilTagFieldLayout;
- private PhotonPoseEstimator photonPoseEstimator;
 
+  @FunctionalInterface
+  public interface VisionMeasurementConsumer {
+    void accept(Pose2d visionRobotPoseMeters, double timestampSeconds, Matrix<N3, N1> stdDevs);
+  }
 
- private static Vision visionInstance = null;
+  private final AprilTagFieldLayout fieldLayout;
+  private final PhotonCamera frontCamera;
+  private final PhotonCamera backCamera;
+  private final PhotonPoseEstimator frontPoseEstimator;
+  private final PhotonPoseEstimator backPoseEstimator;
+  private final VisionMeasurementConsumer measurementConsumer;
 
+  private PhotonPipelineResult frontLatestResult = new PhotonPipelineResult();
+  private PhotonPipelineResult backLatestResult = new PhotonPipelineResult();
+  private Pose2d latestEstimatedPose = new Pose2d();
 
- PhotonCamera frontCamera;
- PhotonCamera backCamera;
- List<PhotonPipelineResult> frontCameraResults;
- List<PhotonPipelineResult> backCameraResults;
- PhotonPipelineResult frontLatestResult;
+  /**
+   * Creates the Vision subsystem for 2026 REBUILT using WPILib 2026 + PhotonVision 2026 APIs.
+   *
+   * @param measurementConsumer Callback to feed vision estimates into your SwerveDrivePoseEstimator
+   *     (pass `swerve::addVisionMeasurement` if supported, or `(pose, ts, std) -> {}`).
+   */
+  public Vision(VisionMeasurementConsumer measurementConsumer) {
+    this.measurementConsumer =
+        measurementConsumer != null ? measurementConsumer : (pose, ts, std) -> {};
 
+    // Use k2026RebuiltWelded (default) or k2026RebuiltAndymark depending on event field type
+    this.fieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2026RebuiltWelded);
 
+    this.frontCamera = new PhotonCamera(VisionConstants.kFrontCameraName);
+    this.backCamera = new PhotonCamera(VisionConstants.kBackCameraName);
 
+    // 2026 PhotonPoseEstimator constructor takes (AprilTagFieldLayout, Transform3d)
+    this.frontPoseEstimator =
+        new PhotonPoseEstimator(fieldLayout, VisionConstants.kRobotToFrontCam);
+    this.backPoseEstimator =
+        new PhotonPoseEstimator(fieldLayout, VisionConstants.kRobotToBackCam);
+  }
 
-
-
- private Pose2d robotInTagPose;
-
-
- public Vision() {
-
-
-   frontCamera = new PhotonCamera(Constants.AutoConstants.frontCamera);
-   backCamera = new PhotonCamera(Constants.AutoConstants.backCamera);
-
-
-  
-   frontCameraResults = frontCamera.getAllUnreadResults();
-   backCameraResults = backCamera.getAllUnreadResults();
-
-
-   if (frontCameraResults.isEmpty()){
-     frontLatestResult = new PhotonPipelineResult();
-   }
-  
-   else {
-     frontLatestResult = frontCameraResults.get(frontCameraResults.size()-1);
-   }
-
-
-   aprilTagFieldLayout = AprilTagFieldLayout.loadField(AprilTagFields.k2025ReefscapeAndyMark);
-   photonPoseEstimator = new PhotonPoseEstimator(aprilTagFieldLayout, PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR, Constants.AutoConstants.frontCameraTransform);
- }
-
-
- public static Vision getVisionInstance() {
-   if (visionInstance == null) {
-     visionInstance = new Vision();
-   }
-   return visionInstance;
- }
-
-
-
-
- public PhotonPoseEstimator getPhotonPoseEstimator(){
-   return photonPoseEstimator;
- }
- public PhotonCamera getFrontApriltagCamera(){
-   return frontCamera;
- }
- public PhotonCamera getBackApriltagCamera(){
-   return backCamera;
- }
-
-
- public Transform3d getRobotToFrontCam(){
-   return Constants.AutoConstants.frontCameraTransform;
- }
-
-
- public Transform3d getRobotToBackCam(){
-   return Constants.AutoConstants.backCameraTransform;
- }
-
-
- public boolean frontHasCalibration(){
-   if (frontCamera.getDistCoeffs().equals(Optional.empty())){
-     return false;
-   }
-   return true;
- }
-
-
- public boolean backHasCalibration(){
-   if (backCamera.getDistCoeffs().equals(Optional.empty())){
-     return false;
-   }
-   return true;
- }
-
-
- public boolean frontHasTag(){
-   if(frontCameraResults.isEmpty()){
-     return false;
-   }
-   else{
-       if(frontLatestResult.hasTargets() && frontLatestResult.getBestTarget().getFiducialId() >= 0){
-           return true;
-       }
-   }
-   return false;
- }
-
-
- public boolean backHasTag(){
-   for (PhotonPipelineResult result : backCameraResults){
-       if (result.hasTargets() && result.getBestTarget().getFiducialId() >= 0){
-           return true;
-       }
-   }
-   return false;
- }
-
-
-
-
- public int frontTagID(){
-   if(frontCameraResults.isEmpty()){
-     return -1;
-   }
-   else{
-       if(frontLatestResult.hasTargets() && frontLatestResult.getBestTarget().getFiducialId() >= 0){
-           return frontLatestResult.getBestTarget().getFiducialId();
-       }
-   }
-    return -1;
- }
- public int backTagID(){
-   for (PhotonPipelineResult result : backCameraResults){
-       if (result.hasTargets()){
-           return result.getBestTarget().getFiducialId();
-       }
+  @Override
+  public void periodic() {
+    // Drain the unread result queues once per loop so commands don't steal frames from pose estimation
+    List<PhotonPipelineResult> frontUnread = frontCamera.getAllUnreadResults();
+    if (!frontUnread.isEmpty()) {
+      frontLatestResult = frontUnread.get(frontUnread.size() - 1);
+      processCameraResults(frontUnread, frontPoseEstimator);
     }
-    return -1;
- }
 
+    List<PhotonPipelineResult> backUnread = backCamera.getAllUnreadResults();
+    if (!backUnread.isEmpty()) {
+      backLatestResult = backUnread.get(backUnread.size() - 1);
+      processCameraResults(backUnread, backPoseEstimator);
+    }
 
- public PhotonPipelineResult getFrontPipelineResult() {
-   if(frontCameraResults.isEmpty()){
-     return null;
-   }
-   else{
-     return frontLatestResult;
-   }
-  } 
+    SmartDashboard.putBoolean("Vision/FrontConnected", frontCamera.isConnected());
+    SmartDashboard.putBoolean("Vision/BackConnected", backCamera.isConnected());
+    SmartDashboard.putBoolean("Vision/FrontHasTarget", frontHasTarget());
+    SmartDashboard.putBoolean("Vision/BackHasTarget", backHasTarget());
+    SmartDashboard.putNumber("Vision/FrontBestTagId", getFrontBestTagId());
+    SmartDashboard.putNumber("Vision/BackBestTagId", getBackBestTagId());
+  }
 
+  private void processCameraResults(
+      List<PhotonPipelineResult> results, PhotonPoseEstimator estimator) {
+    for (PhotonPipelineResult result : results) {
+      if (!result.hasTargets()) {
+        continue;
+      }
 
- public PhotonPipelineResult getBackPipelineResult() {
-   for (PhotonPipelineResult result : backCameraResults){
-       return result;
-   }
-   return null;
- } 
- public Pose2d getBackRelativeTagPose() {
-   for (PhotonPipelineResult result : backCameraResults){
-       if (result.hasTargets()){
-           PhotonTrackedTarget bestTarget = result.getBestTarget();
-           Transform3d tagSpace = bestTarget.getBestCameraToTarget().plus(getRobotToBackCam());
-           return new Pose2d(tagSpace.getX(), tagSpace.getY(), tagSpace.getRotation().toRotation2d());
-       }
-   }
-   return new Pose2d();
- }
+      // 2026 PhotonVision API: prefer coprocessor MultiTag, fall back to Lowest Ambiguity
+      Optional<EstimatedRobotPose> visionEst = estimator.estimateCoprocMultiTagPose(result);
+      if (visionEst.isEmpty()) {
+        visionEst = estimator.estimateLowestAmbiguityPose(result);
+      }
 
+      if (visionEst.isPresent()) {
+        EstimatedRobotPose est = visionEst.get();
+        Matrix<N3, N1> stdDevs = calculateStdDevs(est, result.getTargets());
 
- public Pose2d getRobotPose(){
-   Pose2d tagPose = robotInTagPose;
-   return new Pose2d().transformBy(new Transform2d(tagPose.getTranslation(), tagPose.getRotation()));
- }
-  // return tag pose
- public Pose3d return_tag_pose(int id) {
-   Optional<Pose3d> pose_of_tag = aprilTagFieldLayout.getTagPose(id);
-   return pose_of_tag.get();
- }
+        // Reject high-ambiguity single-tag estimates
+        if (stdDevs.get(0, 0) < Double.MAX_VALUE) {
+          Pose2d estPose2d = est.estimatedPose.toPose2d();
+          latestEstimatedPose = estPose2d;
+          measurementConsumer.accept(estPose2d, est.timestampSeconds, stdDevs);
+        }
+      }
+    }
+  }
 
+  /**
+   * Computes dynamic measurement standard deviations based on tag count and average distance.
+   */
+  private Matrix<N3, N1> calculateStdDevs(
+      EstimatedRobotPose estimatedPose, List<PhotonTrackedTarget> targets) {
+    int numTags = 0;
+    double avgDist = 0.0;
 
- // self calculations
- public Pose3d return_camera_pose_tag(int id, PhotonPipelineResult results) {
-   Optional<Pose3d> pose_of_tag = aprilTagFieldLayout.getTagPose(id);
-   Pose3d tag_pose = pose_of_tag.get();
-   Transform3d cameraTransform = results.getBestTarget().getBestCameraToTarget();
-   return tag_pose.plus(cameraTransform);
- }
- public Optional<EstimatedRobotPose> return_photon_pose(Pose2d latestPose) {
-   photonPoseEstimator.setReferencePose(latestPose);
-   return photonPoseEstimator.update(new PhotonPipelineResult());
- }
+    for (PhotonTrackedTarget tgt : targets) {
+      Optional<Pose3d> tagPose = fieldLayout.getTagPose(tgt.getFiducialId());
+      if (tagPose.isEmpty()) {
+        continue;
+      }
+      numTags++;
+      avgDist +=
+          tagPose
+              .get()
+              .toPose2d()
+              .getTranslation()
+              .getDistance(estimatedPose.estimatedPose.toPose2d().getTranslation());
+    }
 
+    if (numTags == 0) {
+      return VecBuilder.fill(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE);
+    }
 
+    avgDist /= numTags;
 
+    // Single-tag filtering: reject ambiguous or overly distant single-tag reads
+    if (numTags == 1) {
+      PhotonTrackedTarget bestTarget = targets.get(0);
+      if (bestTarget.getPoseAmbiguity() > VisionConstants.kMaxSingleTagAmbiguity
+          || avgDist > 4.0) {
+        return VecBuilder.fill(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE);
+      }
+    }
 
- @Override
- public void periodic() {
+    Matrix<N3, N1> baseStdDevs =
+        (numTags > 1) ? VisionConstants.kMultiTagStdDevs : VisionConstants.kSingleTagStdDevs;
 
+    // Scale uncertainty quadratically with distance
+    double scale = 1.0 + (avgDist * avgDist / 30.0);
+    return baseStdDevs.times(scale);
+  }
 
-  
-   frontCameraResults = frontCamera.getAllUnreadResults();
-   backCameraResults = backCamera.getAllUnreadResults();
+  public PhotonCamera getFrontCamera() {
+    return frontCamera;
+  }
 
+  public PhotonCamera getBackCamera() {
+    return backCamera;
+  }
 
-   if (!frontCameraResults.isEmpty()){
-     frontLatestResult = frontCameraResults.get(frontCameraResults.size()-1);
-   }
-   else {
-     frontLatestResult = new PhotonPipelineResult();
-   }
+  public PhotonPipelineResult getFrontLatestResult() {
+    return frontLatestResult;
+  }
 
+  public PhotonPipelineResult getBackLatestResult() {
+    return backLatestResult;
+  }
 
+  public boolean frontHasTarget() {
+    return frontLatestResult != null && frontLatestResult.hasTargets();
+  }
 
+  public boolean backHasTarget() {
+    return backLatestResult != null && backLatestResult.hasTargets();
+  }
 
- }
+  public int getFrontBestTagId() {
+    return frontHasTarget() ? frontLatestResult.getBestTarget().getFiducialId() : -1;
+  }
 
+  public int getBackBestTagId() {
+    return backHasTarget() ? backLatestResult.getBestTarget().getFiducialId() : -1;
+  }
 
- }
+  /**
+   * Safely retrieves a specific AprilTag target from the cached latest front camera frame.
+   *
+   * @param tagId Desired AprilTag ID, or -1 to return the best visible target.
+   */
+  public Optional<PhotonTrackedTarget> getFrontTarget(int tagId) {
+    if (!frontHasTarget()) {
+      return Optional.empty();
+    }
+    if (tagId == -1) {
+      return Optional.of(frontLatestResult.getBestTarget());
+    }
+    for (PhotonTrackedTarget target : frontLatestResult.getTargets()) {
+      if (target.getFiducialId() == tagId) {
+        return Optional.of(target);
+      }
+    }
+    return Optional.empty();
+  }
 
+  /**
+   * Safely retrieves a specific AprilTag target from the cached latest back camera frame.
+   *
+   * @param tagId Desired AprilTag ID, or -1 to return the best visible target.
+   */
+  public Optional<PhotonTrackedTarget> getBackTarget(int tagId) {
+    if (!backHasTarget()) {
+      return Optional.empty();
+    }
+    if (tagId == -1) {
+      return Optional.of(backLatestResult.getBestTarget());
+    }
+    for (PhotonTrackedTarget target : backLatestResult.getTargets()) {
+      if (target.getFiducialId() == tagId) {
+        return Optional.of(target);
+      }
+    }
+    return Optional.empty();
+  }
 
+  public Optional<Pose3d> getTagPose(int tagId) {
+    return fieldLayout.getTagPose(tagId);
+  }
 
+  public Pose2d getLatestEstimatedPose() {
+    return latestEstimatedPose;
+  }
+
+  public Transform3d getRobotToFrontCam() {
+    return VisionConstants.kRobotToFrontCam;
+  }
+
+  public Transform3d getRobotToBackCam() {
+    return VisionConstants.kRobotToBackCam;
+  }
+}
