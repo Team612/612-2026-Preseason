@@ -198,6 +198,21 @@ public final class Constants {
   }
 
   public static final class VisionConstants {
+    public static final double TRANSLATION_KP = 1.8;
+    public static final double ROTATION_KP = 2.5;
+
+    public static final double MAX_LINEAR_SPEED = 0.75;
+    public static final double MAX_ANGULAR_SPEED = 1.2;
+
+    public static final double MIN_LINEAR_SPEED = 0.18;
+    public static final double MIN_ANGULAR_SPEED = 0.30;
+
+    public static final double POSITION_TOLERANCE = 0.05;
+    public static final double ANGLE_TOLERANCE =
+        Math.toRadians(3.0);
+
+    public static final double MAX_FRAME_AGE = 0.35;
+    public static final double MAX_TARGET_RANGE = 4.0;
     public static final String kFrontCameraName = "FrontCamera";
     public static final String kBackCameraName = "BackCamera";
 
