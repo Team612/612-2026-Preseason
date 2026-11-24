@@ -1,0 +1,50 @@
+{
+  "Connections": {
+    "open": true
+  },
+  "NetworkTables Settings": {
+    "mode": "Client (NT4)",
+    "serverTeam": "10.6.12.2"
+  },
+  "Persistent Values": {
+    "open": false
+  },
+  "Retained Values": {
+    "open": false
+  },
+  "SmartDashboard-NT3@10.6.12.200:53715": {
+    "open": true
+  },
+  "outlineviewer@3": {
+    "open": true
+  },
+  "photonvision@2": {
+    "open": true
+  },
+  "transitory": {
+    "SmartDashboard": {
+      "Align": {
+        "open": true
+      },
+      "Vision": {
+        "open": true
+      },
+      "open": true
+    },
+    "photonvision": {
+      "BackCamera": {
+        "open": true
+      },
+      "FrontCamera": {
+        "open": true
+      },
+      "coprocessors": {
+        "C0-74-2B-FB-72-58": {
+          "open": true
+        },
+        "open": true
+      },
+      "open": true
+    }
+  }
+}
